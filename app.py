@@ -80,7 +80,7 @@ _PASS1_SYSTEM = (
     + _INJECTION_GUARD
 )
 _PASS1_USER = (
-    "Search the web for {company}'s recent news from the last 6 months. "
+    "Search the web for {company}'s recent news from the last 12 months. "
     "Find: product launches, major partnerships, funding rounds, acquisitions, executive changes, "
     "and strategic announcements. For each item found: state the date, what happened, and why it "
     "matters. Be specific — no vague summaries. If you can't find something, say so explicitly "
@@ -95,7 +95,7 @@ _PASS2_SYSTEM = (
     + _INJECTION_GUARD
 )
 _PASS2_USER = (
-    "Search for {company}'s current job openings and recent hiring activity. "
+    "Search for {company}'s current job openings and hiring activity. "
     "Look at job boards (LinkedIn, Indeed, their careers page) and any published reports on their "
     "hiring. Identify: which teams are growing fastest, what technologies and skills appear "
     "repeatedly, what seniority levels they're hiring (ICs vs managers), and what the overall "
@@ -104,13 +104,15 @@ _PASS2_USER = (
     "requirement verbatim. Call out the seniority distribution explicitly — are they hiring ICs, "
     "managers, VP-level, or a mix? Flag any roles that signal a strategic inflection: this could "
     "be M&A integration, platform expansion, GTM buildout, IPO preparation, compliance investment, "
-    "or international growth."
+    "or international growth. "
+    "Separate the snapshot (what roles are open right now) from the trend (how has hiring pace or "
+    "mix shifted over the past 12 months) — both matter."
 )
 
 _PASS3_SYSTEM = "You are a brand and market positioning analyst. " + _INJECTION_GUARD
 _PASS3_USER = (
     "Search for {company}'s recent content output: blog posts, executive interviews, conference "
-    "talks, press statements, and thought leadership from the last 6 months. Identify: what "
+    "talks, press statements, and thought leadership from the last 12 months. Identify: what "
     "narrative they're building publicly, what problems they claim to solve, how they position "
     "against competitors or alternatives, and what themes recur across multiple pieces. "
     "Explicitly identify any named frameworks, strategic mantras, or proprietary terms the company "
