@@ -466,20 +466,15 @@ body { overflow-x: clip !important; }
     margin-top: -1rem !important;
 }
 
-/* Collapse the zero-height component iframe used for JS injection.
-   margin-bottom is negative to cancel the parent flex container's gap. */
+/* Collapse the zero-height component iframe used for JS injection */
 iframe[height="0"],
 [data-testid="stElementContainer"]:has(iframe[height="0"]),
-[data-testid="stVerticalBlockBorderWrapper"]:has(iframe[height="0"]) {
+[data-testid="stVerticalBlockBorderWrapper"]:has(> [data-testid="stElementContainer"] > iframe[height="0"]) {
+    display: block !important;
     height: 0 !important;
     min-height: 0 !important;
-    max-height: 0 !important;
-    margin-top: 0 !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    margin-bottom: -1rem !important;
+    margin: 0 !important;
     padding: 0 !important;
-    border: none !important;
     overflow: hidden !important;
     line-height: 0 !important;
     font-size: 0 !important;
