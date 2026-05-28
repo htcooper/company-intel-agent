@@ -601,10 +601,9 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
 
 @media (max-width: 1200px) {
   .d3-topbar-status { display: none; }
-  /* Hide decorative company name column — use direct/one-wrapper child selectors to
-     avoid accidentally matching nested sub-columns (e.g. the search input field) */
-  [data-testid="stForm"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(1),
-  [data-testid="stForm"] > div > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(1) {
+  /* Hide the company name column by targeting what's inside it — avoids fragile
+     nth-child depth assumptions about Streamlit's wrapper div structure */
+  [data-testid="stColumn"]:has(.d3-topbar-name-group) {
     display: none !important;
   }
 }
