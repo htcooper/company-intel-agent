@@ -409,7 +409,7 @@ def _parse_brief(brief: str) -> dict:
     for key, pattern in patterns:
         m = re.search(pattern, text, re.DOTALL)
         if m:
-            result[key] = m.group(1).strip()
+            result[key] = re.sub(r'\s*\n*-{3,}\s*$', '', m.group(1)).strip()
 
     return result
 
