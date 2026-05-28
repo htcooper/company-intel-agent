@@ -371,6 +371,14 @@ def _inject_css() -> None:
 # ── Brief parsing ─────────────────────────────────────────────────────────────
 
 
+def _md_to_html(text: str) -> str:
+    """Escape HTML, then render **bold** and *italic* markdown inline."""
+    text = html_lib.escape(text)
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
+    return text
+
+
 def _parse_brief(brief: str) -> dict:
     """Extract brief sections, sources, date, and attribution from markdown output."""
     result = {"doing": "", "saying": "", "hiring": "", "bottom": "", "sources": "", "date": "", "attribution": ""}
@@ -509,20 +517,20 @@ def _render_result_editorial(company: str, brief: str) -> None:
     with col1:
         st.markdown('<p class="d3-section-label">What they\'re doing</p>', unsafe_allow_html=True)
         st.markdown(
-            f'<div class="d3-section-text">{html_lib.escape(sections["doing"])}</div>',
+            f'<div class="d3-section-text">{_md_to_html(sections["doing"])}</div>',
             unsafe_allow_html=True,
         )
         st.markdown('<div class="d3-section-rule"></div>', unsafe_allow_html=True)
         st.markdown('<p class="d3-section-label">What they\'re saying</p>', unsafe_allow_html=True)
         st.markdown(
-            f'<div class="d3-section-text">{html_lib.escape(sections["saying"])}</div>',
+            f'<div class="d3-section-text">{_md_to_html(sections["saying"])}</div>',
             unsafe_allow_html=True,
         )
 
     with col2:
         st.markdown('<p class="d3-section-label">What hiring signals suggest</p>', unsafe_allow_html=True)
         st.markdown(
-            f'<div class="d3-section-text">{html_lib.escape(sections["hiring"])}</div>',
+            f'<div class="d3-section-text">{_md_to_html(sections["hiring"])}</div>',
             unsafe_allow_html=True,
         )
 
@@ -531,7 +539,7 @@ def _render_result_editorial(company: str, brief: str) -> None:
             f"""
             <div class="d3-sidebar-box">
                 <div class="d3-sidebar-label">Bottom line</div>
-                <div class="d3-sidebar-text">{html_lib.escape(sections["bottom"])}</div>
+                <div class="d3-sidebar-text">{_md_to_html(sections["bottom"])}</div>
             </div>
             """,
             unsafe_allow_html=True,
