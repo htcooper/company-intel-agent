@@ -264,12 +264,18 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
 [data-testid="stStatusWidget"] { display: none !important; height: 0 !important; }
 /* Allow full-bleed elements (stForm, d3-banner) to break out of the centered container.
    Cover every known Streamlit wrapper that could clip overflow. */
+.stApp,
+[data-testid="stApp"],
+[data-testid="stAppViewContainer"],
 [data-testid="stMain"],
 [data-testid="stMainBlockContainer"],
 [data-testid="stVerticalBlock"],
 [data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stElementContainer"],
+[data-testid="stFormBody"],
 .main { overflow: visible !important; padding-top: 0 !important; margin-top: 0 !important; }
-[data-testid="stAppViewContainer"] { padding-top: 0 !important; margin-top: 0 !important; }
+/* Prevent horizontal scrollbar from appearing due to 100vw overflow */
+body { overflow-x: clip !important; }
 /* Unnamed wrapper Streamlit injects between stMain and block-container */
 [data-testid="stMain"] > div:first-child { padding-top: 0 !important; margin-top: 0 !important; }
 .block-container {
@@ -281,12 +287,11 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
 }
 
 /* Form = the topbar: full-bleed white bar with border-bottom.
-   Uses calc(100% + 2*padding) rather than 100vw — more reliable inside HF Spaces
-   iframes where a parent container can block vw-based width expansion. */
+   Uses 100vw + calc(50% - 50vw) — same technique as .d3-banner which works on HF Spaces. */
 [data-testid="stForm"] {
     box-sizing: border-box !important;
-    width: calc(100% + 80px) !important;
-    margin-left: -40px !important;
+    width: 100vw !important;
+    margin-left: calc(50% - 50vw) !important;
     background: #fff !important;
     border: none !important;
     border-bottom: 2px solid #1a1a1a !important;
