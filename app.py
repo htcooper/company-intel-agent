@@ -369,6 +369,9 @@ banking rails in markets where legacy finance is weak.
 def _inject_css() -> None:
     css = Path("style.css").read_text(encoding="utf-8")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+
+def _inject_init_reload() -> None:
     st_components.html(
         """<script>
 if (!window.parent.sessionStorage.getItem('_init')) {
@@ -820,6 +823,7 @@ def main() -> None:
 
             _run_and_render(confirmed, api_key)
 
+    _inject_init_reload()
 
 
 if __name__ == "__main__":
