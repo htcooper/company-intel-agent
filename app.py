@@ -476,7 +476,7 @@ def _render_result_editorial(company: str, brief: str) -> None:
             <span class="d3-dot">·</span>
             <span>{date_str}</span>
             <span class="d3-dot">·</span>
-            <span>4 Research Passes</span>
+            <span>Three Research Passes + Synthesis</span>
         </div>
         <div class="d3-headline-block">
             <div class="d3-kicker">Company Intelligence</div>
