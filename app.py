@@ -630,6 +630,10 @@ def main() -> None:
 
     _inject_css()
 
+    if "initialized" not in st.session_state:
+        st.session_state.initialized = True
+        st.rerun()
+
     if "run_count" not in st.session_state:
         st.session_state.run_count = 0
     if "disambig_pending" not in st.session_state:
