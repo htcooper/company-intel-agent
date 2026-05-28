@@ -467,13 +467,17 @@ body { overflow-x: clip !important; }
 }
 
 /* Collapse the zero-height component iframe used for JS injection */
-[data-testid="stElementContainer"]:has(iframe[height="0"]) {
+iframe[height="0"],
+[data-testid="stElementContainer"]:has(iframe[height="0"]),
+[data-testid="stVerticalBlockBorderWrapper"]:has(> [data-testid="stElementContainer"] > iframe[height="0"]) {
+    display: block !important;
     height: 0 !important;
     min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
     line-height: 0 !important;
+    font-size: 0 !important;
 }
 
 /* Status column (5th / last topbar column) — fills remaining space, content right-aligned */
