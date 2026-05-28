@@ -295,7 +295,7 @@ def run_pipeline(company: str, api_key: str, status_callback) -> str:
         sources_md = "\n".join(f'- [{s["title"]}]({s["url"]})' for s in all_sources)
         brief = brief.rstrip() + f"\n\n**Sources**\n{sources_md}"
 
-    date_str = datetime.now().strftime("%B %d, %Y")
+    date_str = datetime.now().strftime("%d %B %Y")
     brief = brief.rstrip() + f"\n\n*Run date: {date_str}*"
 
     save_cache(company, brief)
@@ -464,7 +464,7 @@ def _render_result_editorial(company: str, brief: str) -> None:
         date_str = sections["date"]
     else:
         now = datetime.now()
-        date_str = f"{now.strftime('%B')} {now.day}, {now.year}"
+        date_str = now.strftime("%d %B %Y")
     safe_company = html_lib.escape(company)
 
     st.markdown(
@@ -653,8 +653,20 @@ def main() -> None:
                     unsafe_allow_html=True,
                 )
 
+    # Content area — rendered into a placeholder so it can be cleared instantly
+    # when the pipeline starts (avoids Streamlit's default gray-out behavior).
+    _content = st.empty()
+    if not generate and not st.session_state.disambig_pending:
+        with _content.container():
+            if st.session_state.last_result:
+                r = st.session_state.last_result
+                _render_result_editorial(r["company"], r["brief"])
+            else:
+                _render_welcome()
+
     # Generate logic
     if generate:
+        _content.empty()  # clear page content before pipeline starts
         byok = st.session_state.get("api_key_input", "")
         company = sanitize_company(company)
         if not company:
@@ -774,12 +786,6 @@ def main() -> None:
 
             _run_and_render(confirmed, api_key)
 
-    # Re-render last result on reruns (e.g. after download button click)
-    if st.session_state.last_result and not generate and not st.session_state.disambig_pending:
-        r = st.session_state.last_result
-        _render_result_editorial(r["company"], r["brief"])
-    elif not generate and not st.session_state.disambig_pending:
-        _render_welcome()
 
 
 if __name__ == "__main__":
