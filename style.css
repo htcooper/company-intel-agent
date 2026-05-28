@@ -286,6 +286,18 @@ body { overflow-x: clip !important; }
     overflow: visible !important;
 }
 
+/* Expand the form's inner wrapper chain to match the full 100vw form width.
+   Streamlit computes stVerticalBlock widths from JS layout at render time, before our
+   CSS overrides apply — so emotion-cache classes on these elements have narrow pixel widths.
+   Direct-child selectors prevent this from affecting nested wrappers inside columns. */
+[data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"] > div,
+[data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"] {
+    width: 100% !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+}
+
 /* Form = the topbar: full-bleed white bar with border-bottom.
    Uses 100vw + calc(50% - 50vw) — same technique as .d3-banner which works on HF Spaces. */
 [data-testid="stForm"] {
