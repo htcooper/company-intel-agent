@@ -371,24 +371,20 @@ def _inject_css() -> None:
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
     st_components.html(
         """<script>
-setTimeout(function() {
-    var p = window.parent.document;
-    var form = p.querySelector('[data-testid="stForm"]');
-    if (!form) return;
-    form.querySelectorAll('[data-testid="stVerticalBlock"]').forEach(function(el) {
-        el.style.setProperty('width', '100%', 'important');
-        el.style.setProperty('max-width', 'none', 'important');
-        el.style.setProperty('box-sizing', 'border-box', 'important');
-    });
-    form.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]').forEach(function(el) {
-        el.style.setProperty('width', '100%', 'important');
-    });
-    form.querySelectorAll('[data-testid="stHorizontalBlock"]').forEach(function(el) {
-        el.style.setProperty('display', 'flex', 'important');
-        el.style.setProperty('width', '100%', 'important');
-        el.style.setProperty('flex-wrap', 'nowrap', 'important');
-    });
-}, 100);
+if (!window.parent.sessionStorage.getItem('_init')) {
+    window.parent.sessionStorage.setItem('_init', '1');
+    window.parent.location.reload();
+} else {
+    // Already reloaded — hide our own container so it takes no space
+    var el = window.frameElement;
+    while (el) {
+        if (el.getAttribute && el.getAttribute('data-testid') === 'stVerticalBlockBorderWrapper') {
+            el.style.cssText = 'display:none!important;height:0!important;margin:0!important;padding:0!important;';
+            break;
+        }
+        el = el.parentElement;
+    }
+}
 </script>""",
         height=0,
     )
