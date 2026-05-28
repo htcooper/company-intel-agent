@@ -362,7 +362,10 @@ body { overflow-x: clip !important; }
 }
 
 [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+    display: flex !important;
     gap: 24px !important;
+    width: 100% !important;
+    flex-wrap: nowrap !important;
 }
 /* Vertically center content inside each topbar column */
 [data-testid="stForm"] [data-testid="stColumn"] > div {
