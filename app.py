@@ -368,6 +368,15 @@ banking rails in markets where legacy finance is weak.
 def _inject_css() -> None:
     css = Path("style.css").read_text(encoding="utf-8")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    st.markdown(
+        """<script>
+if (!sessionStorage.getItem('_init')) {
+    sessionStorage.setItem('_init', '1');
+    window.location.reload();
+}
+</script>""",
+        unsafe_allow_html=True,
+    )
 
 
 # ── Brief parsing ─────────────────────────────────────────────────────────────
@@ -629,10 +638,6 @@ def main() -> None:
     )
 
     _inject_css()
-
-    if "initialized" not in st.session_state:
-        st.session_state.initialized = True
-        st.rerun()
 
     if "run_count" not in st.session_state:
         st.session_state.run_count = 0
