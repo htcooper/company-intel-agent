@@ -621,6 +621,43 @@ body { overflow-x: clip !important; }
 
 
 /* ════════════════════════════════════════════════════════
+   Alert / notification banners
+════════════════════════════════════════════════════════ */
+
+[data-testid="stAlert"] {
+    background: #f5f0e8 !important;
+    border: 1px solid #c8bfa8 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 10px 20px !important;
+}
+[data-testid*="stAlertContent"] {
+    background: transparent !important;
+    gap: 10px !important;
+    align-items: center !important;
+}
+[data-testid="stAlert"] p {
+    font-family: 'Inter', sans-serif !important;
+    font-size: 13px !important;
+    line-height: 1.6 !important;
+    margin: 0 !important;
+}
+/* Icon + text color per type */
+[data-testid="stAlertContentInfo"],
+[data-testid="stAlertContentInfo"] svg { color: #6b7280 !important; fill: #6b7280 !important; }
+[data-testid="stAlertContentSuccess"],
+[data-testid="stAlertContentSuccess"] svg { color: #16a34a !important; fill: #16a34a !important; }
+[data-testid="stAlertContentWarning"],
+[data-testid="stAlertContentWarning"] svg { color: #b45309 !important; fill: #b45309 !important; }
+[data-testid="stAlertContentError"],
+[data-testid="stAlertContentError"] svg { color: #9c1a1a !important; fill: #9c1a1a !important; }
+[data-testid="stAlert"] svg {
+    width: 16px !important;
+    height: 16px !important;
+    flex-shrink: 0 !important;
+}
+
+/* ════════════════════════════════════════════════════════
    Responsive
 ════════════════════════════════════════════════════════ */
 
