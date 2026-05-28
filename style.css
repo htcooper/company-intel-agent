@@ -289,10 +289,16 @@ body { overflow-x: clip !important; }
 /* Expand the form's inner wrapper chain to match the full 100vw form width.
    Streamlit computes stVerticalBlock widths from JS layout at render time, before our
    CSS overrides apply — so emotion-cache classes on these elements have narrow pixel widths.
-   Direct-child selectors prevent this from affecting nested wrappers inside columns. */
+   Direct-child selectors prevent this from affecting nested wrappers inside columns.
+   Two parallel chains: on first load Streamlit inserts stFormBody between stForm and
+   stVerticalBlockBorderWrapper; after a rerun/refresh it is absent. Both are handled. */
 [data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"],
 [data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"] > div,
-[data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"] {
+[data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"],
+[data-testid="stForm"] > [data-testid="stFormBody"],
+[data-testid="stForm"] > [data-testid="stFormBody"] > [data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stForm"] > [data-testid="stFormBody"] > [data-testid="stVerticalBlockBorderWrapper"] > div,
+[data-testid="stForm"] > [data-testid="stFormBody"] > [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"] {
     width: 100% !important;
     max-width: none !important;
     box-sizing: border-box !important;
