@@ -308,11 +308,12 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
     box-sizing: border-box !important;
     box-shadow: none !important;
 }
-/* Search field — fixed 180px matching the HTML mock */
+/* Search field — fluid width, capped at 180px so it doesn't grow too wide */
 [data-testid="stForm"] [data-testid="stTextInputRootElement"],
 [data-testid="stForm"] [data-testid="stTextInputRootElement"] input {
-    width: 180px !important;
+    width: 100% !important;
     max-width: 180px !important;
+    min-width: 0 !important;
 }
 [data-testid="stTextInputRootElement"] input::placeholder { color: #9ca3af !important; }
 [data-testid="stTextInputRootElement"] input:focus { outline: none !important; box-shadow: none !important; }
@@ -384,10 +385,11 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
     width: auto !important;
     min-width: 0 !important;
 }
-/* Nested horizontal block (input + button): tight gap, vertical centering */
+/* Nested horizontal block (input + button): tight gap, vertical centering, no wrap */
 [data-testid="stForm"] [data-testid="stColumn"]:nth-child(2) [data-testid="stHorizontalBlock"] {
     align-items: center !important;
     gap: 8px !important;
+    flex-wrap: nowrap !important;
 }
 
 /* API key popover button (4th topbar column) — ghost style matching .d3-topbar-apikey */
