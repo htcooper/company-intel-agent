@@ -28,5 +28,8 @@ testing/
 # Claude Code local settings (personal permission overrides)
 .claude/settings.local.json
 
+# Design exploration files
+design-options.html
+
 # Backup files
 *.bak
