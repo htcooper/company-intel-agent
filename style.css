@@ -601,8 +601,10 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
 
 @media (max-width: 1200px) {
   .d3-topbar-status { display: none; }
-  /* Hide decorative company name column — banner below provides the same context */
-  [data-testid="stForm"] [data-testid="stColumn"]:nth-child(1) {
+  /* Hide decorative company name column — use direct/one-wrapper child selectors to
+     avoid accidentally matching nested sub-columns (e.g. the search input field) */
+  [data-testid="stForm"] > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(1),
+  [data-testid="stForm"] > div > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(1) {
     display: none !important;
   }
 }
