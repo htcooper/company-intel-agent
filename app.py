@@ -7,6 +7,7 @@ from pathlib import Path
 
 import anthropic
 import streamlit as st
+import streamlit.components.v1 as st_components
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -368,11 +369,28 @@ banking rails in markets where legacy finance is weak.
 def _inject_css() -> None:
     css = Path("style.css").read_text(encoding="utf-8")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-    st.markdown(
-        """<iframe srcdoc='<script>if (!window.parent.sessionStorage.getItem("_init")) { window.parent.sessionStorage.setItem("_init", "1"); window.parent.location.reload(); }</script>'
-        style="display:none;position:fixed;width:0;height:0;border:none;top:0;left:0;"
-        scrolling="no"></iframe>""",
-        unsafe_allow_html=True,
+    st_components.html(
+        """<script>
+setTimeout(function() {
+    var p = window.parent.document;
+    var form = p.querySelector('[data-testid="stForm"]');
+    if (!form) return;
+    form.querySelectorAll('[data-testid="stVerticalBlock"]').forEach(function(el) {
+        el.style.setProperty('width', '100%', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('box-sizing', 'border-box', 'important');
+    });
+    form.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]').forEach(function(el) {
+        el.style.setProperty('width', '100%', 'important');
+    });
+    form.querySelectorAll('[data-testid="stHorizontalBlock"]').forEach(function(el) {
+        el.style.setProperty('display', 'flex', 'important');
+        el.style.setProperty('width', '100%', 'important');
+        el.style.setProperty('flex-wrap', 'nowrap', 'important');
+    });
+}, 100);
+</script>""",
+        height=0,
     )
 
 
