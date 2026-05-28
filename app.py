@@ -374,16 +374,6 @@ def _inject_css() -> None:
 if (!window.parent.sessionStorage.getItem('_init')) {
     window.parent.sessionStorage.setItem('_init', '1');
     window.parent.location.reload();
-} else {
-    // Already reloaded — hide our own container so it takes no space
-    var el = window.frameElement;
-    while (el) {
-        if (el.getAttribute && el.getAttribute('data-testid') === 'stVerticalBlockBorderWrapper') {
-            el.style.cssText = 'display:none!important;height:0!important;margin:0!important;padding:0!important;';
-            break;
-        }
-        el = el.parentElement;
-    }
 }
 </script>""",
         height=0,
