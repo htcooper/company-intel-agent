@@ -599,6 +599,14 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
    Responsive
 ════════════════════════════════════════════════════════ */
 
+@media (max-width: 1200px) {
+  .d3-topbar-status { display: none; }
+  /* Hide decorative company name column — banner below provides the same context */
+  [data-testid="stForm"] [data-testid="stColumn"]:nth-child(1) {
+    display: none !important;
+  }
+}
+
 @media (max-width: 1000px) {
   .d3-topbar-status { display: none; }
 }
