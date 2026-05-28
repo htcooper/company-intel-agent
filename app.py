@@ -481,8 +481,6 @@ def _render_result_editorial(company: str, brief: str) -> None:
         <div class="d3-headline-block">
             <div class="d3-kicker">Company Intelligence</div>
             <div class="d3-headline">{safe_company}</div>
-            <div class="d3-deck">A cross-dimensional intelligence brief covering strategy,
-            narrative, and talent signals — synthesized from autonomous AI research.</div>
         </div>
         <div class="d3-rule"></div>
         <div class="d3-rule-thin"></div>
