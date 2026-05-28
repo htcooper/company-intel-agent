@@ -7,6 +7,7 @@ from pathlib import Path
 
 import anthropic
 import streamlit as st
+import streamlit.components.v1 as st_components
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -368,14 +369,14 @@ banking rails in markets where legacy finance is weak.
 def _inject_css() -> None:
     css = Path("style.css").read_text(encoding="utf-8")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-    st.markdown(
+    st_components.html(
         """<script>
-if (!sessionStorage.getItem('_init')) {
-    sessionStorage.setItem('_init', '1');
-    window.location.reload();
+if (!window.parent.sessionStorage.getItem('_init')) {
+    window.parent.sessionStorage.setItem('_init', '1');
+    window.parent.location.reload();
 }
 </script>""",
-        unsafe_allow_html=True,
+        height=0,
     )
 
 
