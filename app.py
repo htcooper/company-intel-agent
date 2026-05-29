@@ -5,22 +5,25 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import anthropic
 import streamlit as st
 import streamlit.components.v1 as st_components
 from dotenv import load_dotenv
+
+from providers import (
+    PROVIDER_CONFIGS,
+    LLMAuthError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    make_adapter,
+)
 
 load_dotenv()
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
-MODEL = "claude-sonnet-4-6"
-DISAMBIG_MODEL = "claude-haiku-4-5-20251001"
 CACHE_DIR = Path("cache")
 CACHE_TTL_HOURS = 24
 MAX_RUNS_PER_SESSION = 3
-
-TOOLS = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_callers": ["direct"]}]
 
 # ── Cache ────────────────────────────────────────────────────────────────────
 
@@ -186,85 +189,46 @@ _RESOLVE_USER = 'Find the exact company name for: "{query}"'
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
 
-def _extract_text(response: anthropic.types.Message) -> str:
-    return "\n\n".join(
-        block.text for block in response.content if block.type == "text"
-    )
-
-
-def _extract_sources(response: anthropic.types.Message) -> list[dict]:
-    """Extract cited URLs from a web search response, preferring text citations."""
-    sources: list[dict] = []
-    seen: set[str] = set()
-
-    for block in response.content:
-        if block.type == "text":
-            for c in getattr(block, "citations", None) or []:
-                url = getattr(c, "url", None)
-                if url and url not in seen:
-                    seen.add(url)
-                    sources.append({"url": url, "title": getattr(c, "title", url)})
-
-    # Fall back to raw search result blocks if no citations found
-    if not sources:
-        for block in response.content:
-            if getattr(block, "type", None) == "web_search_tool_result":
-                for result in getattr(block, "content", []) or []:
-                    url = getattr(result, "url", None)
-                    if url and url not in seen:
-                        seen.add(url)
-                        sources.append({"url": url, "title": getattr(result, "title", url)})
-
-    return sources
-
-
 def _run_research_pass(
-    client: anthropic.Anthropic,
+    adapter,
     company: str,
     system_prompt: str,
     user_prompt: str,
 ) -> tuple[str, list[dict]]:
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=2048,
+    result = adapter.call_with_search(
         system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt.format(company=company)}],
-        tools=TOOLS,
+        user=user_prompt.format(company=company),
+        max_tokens=2048,
+        max_search_uses=3,
     )
-    return _extract_text(response), _extract_sources(response)
+    return result.text, result.sources
 
 
 def _run_synthesis(
-    client: anthropic.Anthropic,
+    adapter,
     company: str,
     pass1: str,
     pass2: str,
     pass3: str,
 ) -> str:
-    response = client.messages.create(
-        model=MODEL,
+    result = adapter.call_text_only(
+        system=None,
+        user=_SYNTHESIS_USER.format(
+            company=company, pass1=pass1, pass2=pass2, pass3=pass3
+        ),
         max_tokens=1024,
-        messages=[
-            {
-                "role": "user",
-                "content": _SYNTHESIS_USER.format(
-                    company=company, pass1=pass1, pass2=pass2, pass3=pass3
-                ),
-            }
-        ],
     )
-    return _extract_text(response)
+    return result.text
 
 
-def _disambiguate(client: anthropic.Anthropic, company: str) -> dict:
+def _disambiguate(adapter, company: str) -> dict:
     """Classify company name using general knowledge only. Returns status dict."""
-    response = client.messages.create(
-        model=DISAMBIG_MODEL,
-        max_tokens=256,
+    result = adapter.call_text_only(
         system=_DISAMBIG_SYSTEM,
-        messages=[{"role": "user", "content": _DISAMBIG_USER.format(company=company)}],
+        user=_DISAMBIG_USER.format(company=company),
+        max_tokens=256,
     )
-    text = _extract_text(response).strip()
+    text = result.text.strip()
     text = re.sub(r"```(?:json)?\n?", "", text).strip().rstrip("`").strip()
     try:
         return json.loads(text)
@@ -272,35 +236,32 @@ def _disambiguate(client: anthropic.Anthropic, company: str) -> dict:
         return {"status": "clear", "company": company}
 
 
-def _resolve_company(client: anthropic.Anthropic, query: str) -> str:
+def _resolve_company(adapter, query: str) -> str:
     """Resolve an ambiguous name or description to a canonical company name via web search."""
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=64,
+    result = adapter.call_with_search(
         system=_RESOLVE_SYSTEM,
-        messages=[{"role": "user", "content": _RESOLVE_USER.format(query=query)}],
-        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 1}],
+        user=_RESOLVE_USER.format(query=query),
+        max_tokens=64,
+        max_search_uses=1,
     )
-    return _extract_text(response).strip().split("\n")[0].strip()
+    return result.text.strip().split("\n")[0].strip()
 
 
-def run_pipeline(company: str, api_key: str, status_callback) -> str:
-    client = anthropic.Anthropic(
-        api_key=api_key,
-        timeout=anthropic.Timeout(90.0, connect=10.0),
-    )
+def run_pipeline(company: str, api_key: str, provider: str, status_callback) -> str:
+    config = PROVIDER_CONFIGS[provider]
+    adapter = make_adapter(provider, api_key, config.research_model)
 
     status_callback("🔎 Searching news & announcements...")
-    pass1, sources1 = _run_research_pass(client, company, _PASS1_SYSTEM, _PASS1_USER)
+    pass1, sources1 = _run_research_pass(adapter, company, _PASS1_SYSTEM, _PASS1_USER)
 
     status_callback("📋 Analyzing hiring signals...")
-    pass2, sources2 = _run_research_pass(client, company, _PASS2_SYSTEM, _PASS2_USER)
+    pass2, sources2 = _run_research_pass(adapter, company, _PASS2_SYSTEM, _PASS2_USER)
 
     status_callback("📣 Researching content & positioning...")
-    pass3, sources3 = _run_research_pass(client, company, _PASS3_SYSTEM, _PASS3_USER)
+    pass3, sources3 = _run_research_pass(adapter, company, _PASS3_SYSTEM, _PASS3_USER)
 
     status_callback("🧠 Synthesizing findings...")
-    brief = _run_synthesis(client, company, pass1, pass2, pass3)
+    brief = _run_synthesis(adapter, company, pass1, pass2, pass3)
 
     # Aggregate and deduplicate sources directly from API response blocks
     seen: set[str] = set()
@@ -609,20 +570,22 @@ Built by **Hollis Cooper** ·
             )
 
 
-def _run_and_render(company: str, api_key: str) -> None:
+def _run_and_render(company: str, api_key: str, provider: str) -> None:
     try:
         with st.status(f"Researching {company}...", expanded=True) as run_status:
-            brief = run_pipeline(company, api_key, lambda msg: run_status.write(msg))
+            brief = run_pipeline(
+                company, api_key, provider, lambda msg: run_status.write(msg)
+            )
             run_status.update(label="Brief ready!", state="complete", expanded=False)
         st.session_state.run_count += 1
         st.session_state.last_result = {"company": company, "brief": brief}
         st.rerun()
-    except anthropic.AuthenticationError:
+    except LLMAuthError:
         st.error("Invalid API key. Please check your key and try again.")
-    except anthropic.RateLimitError:
+    except LLMRateLimitError:
         st.warning("Rate limit reached. Showing a pre-generated example.")
         _render_result_editorial("Stripe", EXAMPLE_BRIEF)
-    except anthropic.APITimeoutError:
+    except LLMTimeoutError:
         st.error("Request timed out after 90 seconds. Please try again.")
     except Exception as e:
         st.error(f"Something went wrong: {e}")
@@ -646,6 +609,8 @@ def main() -> None:
         st.session_state.disambig_pending = None
     if "stored_api_key" not in st.session_state:
         st.session_state.stored_api_key = ""
+    if "provider_select" not in st.session_state:
+        st.session_state.provider_select = "anthropic"
     if "last_result" not in st.session_state:
         st.session_state.last_result = None
 
@@ -673,11 +638,20 @@ def main() -> None:
                 generate = st.form_submit_button("Generate ▸", type="primary", use_container_width=True)
         with fc3:
             with st.popover("🔑 Use Your Own API Key", use_container_width=True):
+                st.selectbox(
+                    "Provider",
+                    options=list(PROVIDER_CONFIGS.keys()),
+                    format_func=lambda k: PROVIDER_CONFIGS[k].display_name,
+                    key="provider_select",
+                )
+                _selected_config = PROVIDER_CONFIGS[
+                    st.session_state.get("provider_select", "anthropic")
+                ]
                 st.text_input(
-                    "Anthropic API Key",
+                    f"{_selected_config.display_name} API Key",
                     type="password",
                     key="api_key_input",
-                    placeholder="sk-ant-...",
+                    placeholder=_selected_config.api_key_placeholder,
                     help="Your key stays in-session and is never stored.",
                 )
         with fc4:
@@ -719,8 +693,10 @@ def main() -> None:
             st.session_state.last_result = {"company": company, "brief": cached}
             st.rerun()
 
-        # 2. Resolve API key
-        api_key = byok.strip() if byok.strip() else os.environ.get("ANTHROPIC_API_KEY", "")
+        # 2. Resolve provider and API key
+        provider = st.session_state.get("provider_select", "anthropic")
+        _config = PROVIDER_CONFIGS[provider]
+        api_key = byok.strip() if byok.strip() else os.environ.get(_config.env_var, "")
 
         # 3. No key → fallback
         if not api_key:
@@ -738,12 +714,9 @@ def main() -> None:
             st.stop()
 
         # 5. Disambiguate using general knowledge (fast, cheap, no web search)
-        disambig_client = anthropic.Anthropic(
-            api_key=api_key,
-            timeout=anthropic.Timeout(30.0, connect=10.0),
-        )
+        fast_adapter = make_adapter(provider, api_key, _config.fast_model, timeout=30.0)
         try:
-            disambig = _disambiguate(disambig_client, company)
+            disambig = _disambiguate(fast_adapter, company)
         except Exception:
             disambig = {"status": "clear", "company": company}
 
@@ -756,18 +729,19 @@ def main() -> None:
                 "options": disambig["options"],
                 "raw": company,
                 "api_key": api_key,
+                "provider": provider,
             }
             st.rerun()
         elif disambig["status"] == "unknown":
             try:
-                company = _resolve_company(disambig_client, company).title()
+                company = _resolve_company(fast_adapter, company).title()
             except Exception:
                 pass
         else:
             company = disambig.get("company", company).title()
 
         # 6. Run pipeline
-        _run_and_render(company, api_key)
+        _run_and_render(company, api_key, provider)
 
     # ── Clarification UI (shown when company name is ambiguous) ──────────────
     if st.session_state.disambig_pending:
@@ -775,6 +749,7 @@ def main() -> None:
         options = pending["options"]
         raw = pending["raw"]
         api_key = pending["api_key"]
+        provider = pending.get("provider", "anthropic")
 
         st.info(f'**"{raw}"** could refer to more than one company. Which did you mean?')
 
@@ -793,12 +768,12 @@ def main() -> None:
                 if not other_input.strip():
                     st.warning("Please describe the company before searching.")
                     st.stop()
-                resolve_client = anthropic.Anthropic(
-                    api_key=api_key,
-                    timeout=anthropic.Timeout(30.0, connect=10.0),
+                _resolve_config = PROVIDER_CONFIGS[provider]
+                resolve_adapter = make_adapter(
+                    provider, api_key, _resolve_config.fast_model, timeout=30.0
                 )
                 with st.spinner("Finding company..."):
-                    confirmed = _resolve_company(resolve_client, other_input).title()
+                    confirmed = _resolve_company(resolve_adapter, other_input).title()
             else:
                 idx = display_options.index(choice_label)
                 confirmed = options[idx]["name"].title()
@@ -818,7 +793,7 @@ def main() -> None:
                 st.session_state.last_result = {"company": confirmed, "brief": cached}
                 st.rerun()
 
-            _run_and_render(confirmed, api_key)
+            _run_and_render(confirmed, api_key, provider)
 
 
 

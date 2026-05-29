@@ -20,7 +20,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import anthropic as anthropic_sdk
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -37,6 +36,7 @@ from app import (
     sanitize_company,
     save_cache,
 )
+from providers import PROVIDER_CONFIGS, make_adapter
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,11 +48,9 @@ def _require_api_key() -> str:
     return key
 
 
-def _make_client() -> anthropic_sdk.Anthropic:
-    return anthropic_sdk.Anthropic(
-        api_key=_require_api_key(),
-        timeout=anthropic_sdk.Timeout(60.0, connect=10.0),
-    )
+def _make_client():
+    config = PROVIDER_CONFIGS["anthropic"]
+    return make_adapter("anthropic", _require_api_key(), config.research_model, timeout=60.0)
 
 
 # Phrases from the system prompt that should never appear in model output
