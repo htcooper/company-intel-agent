@@ -186,8 +186,6 @@ class AnthropicAdapter:
 
 # ── OpenAI adapter ────────────────────────────────────────────────────────────
 
-_OPENAI_SEARCH_MODEL = "gpt-4o-search-preview"
-
 
 class OpenAIAdapter:
     def __init__(self, api_key: str, model: str, timeout: float = 90.0) -> None:
@@ -204,16 +202,17 @@ class OpenAIAdapter:
         max_tokens: int,
         max_search_uses: int,
     ) -> LLMResponse:
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ]
+        # web_search_preview is a Responses API tool, not Chat Completions.
+        # Chat Completions only accepts function/custom tool types.
         try:
-            response = self._client.chat.completions.create(
-                model=_OPENAI_SEARCH_MODEL,
-                max_tokens=max_tokens,
-                messages=messages,
+            response = self._client.responses.create(
+                model=self._model,
                 tools=[{"type": "web_search_preview"}],
+                input=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                max_output_tokens=max_tokens,
             )
         except self._openai.AuthenticationError as e:
             raise LLMAuthError(str(e)) from e
@@ -222,8 +221,8 @@ class OpenAIAdapter:
         except self._openai.APITimeoutError as e:
             raise LLMTimeoutError(str(e)) from e
         return LLMResponse(
-            text=self._extract_text(response),
-            sources=self._extract_sources(response),
+            text=self._extract_responses_text(response),
+            sources=self._extract_responses_sources(response),
         )
 
     def call_text_only(
@@ -263,6 +262,35 @@ class OpenAIAdapter:
                 if citation:
                     url = getattr(citation, "url", None)
                     title = getattr(citation, "title", url)
+                    if url and url not in seen:
+                        seen.add(url)
+                        sources.append({"url": url, "title": title})
+        return sources
+
+    def _extract_responses_text(self, response) -> str:
+        text = getattr(response, "output_text", None)
+        if text:
+            return text
+        parts: list[str] = []
+        for item in getattr(response, "output", None) or []:
+            if getattr(item, "type", None) == "message":
+                for content in getattr(item, "content", None) or []:
+                    if getattr(content, "type", None) == "output_text":
+                        parts.append(getattr(content, "text", "") or "")
+        return "\n\n".join(p for p in parts if p)
+
+    def _extract_responses_sources(self, response) -> list[dict]:
+        sources: list[dict] = []
+        seen: set[str] = set()
+        for item in getattr(response, "output", None) or []:
+            if getattr(item, "type", None) != "message":
+                continue
+            for content in getattr(item, "content", None) or []:
+                for ann in getattr(content, "annotations", None) or []:
+                    if getattr(ann, "type", None) != "url_citation":
+                        continue
+                    url = getattr(ann, "url", None)
+                    title = getattr(ann, "title", url)
                     if url and url not in seen:
                         seen.add(url)
                         sources.append({"url": url, "title": title})
