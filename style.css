@@ -387,9 +387,13 @@ body { overflow-x: clip !important; }
 }
 /* st.container wrapping (input + Generate): treat the whole container as a
    single flex child of the outer row so input + button always wrap together.
-   Streamlit 1.56 wraps st.container in [data-testid="stLayoutWrapper"] with a
-   width:100% emotion class — override that, plus the BorderWrapper and the
-   intermediate div, so the container shrinks to its content. */
+   Streamlit's container hierarchy varies by version (1.56 introduces
+   stLayoutWrapper around stVerticalBlockBorderWrapper; older versions only
+   have BorderWrapper). The first selector catches whatever direct child of
+   the outer row contains the submit button — the st.container wrapper,
+   regardless of its testid. The rest cover the inner divs that also have
+   width:100% emotion classes. */
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > *:has([data-testid="stFormSubmitButton"]),
 [data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stLayoutWrapper"],
 [data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stVerticalBlockBorderWrapper"],
 [data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stVerticalBlockBorderWrapper"] > div,
