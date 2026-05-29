@@ -644,14 +644,11 @@ def main() -> None:
                     format_func=lambda k: PROVIDER_CONFIGS[k].display_name,
                     key="provider_select",
                 )
-                _selected_config = PROVIDER_CONFIGS[
-                    st.session_state.get("provider_select", "anthropic")
-                ]
                 st.text_input(
-                    f"{_selected_config.display_name} API Key",
+                    "API Key",
                     type="password",
                     key="api_key_input",
-                    placeholder=_selected_config.api_key_placeholder,
+                    placeholder="sk-...",
                     help="Your key stays in-session and is never stored.",
                 )
         with fc4:

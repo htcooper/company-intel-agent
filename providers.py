@@ -44,7 +44,7 @@ class ProviderConfig:
 PROVIDER_CONFIGS: dict[str, ProviderConfig] = {
     "anthropic": ProviderConfig(
         name="anthropic",
-        display_name="Anthropic Claude",
+        display_name="Anthropic",
         api_key_placeholder="sk-ant-...",
         env_var="ANTHROPIC_API_KEY",
         research_model="claude-sonnet-4-6",
@@ -52,7 +52,7 @@ PROVIDER_CONFIGS: dict[str, ProviderConfig] = {
     ),
     "openai": ProviderConfig(
         name="openai",
-        display_name="OpenAI GPT-4o",
+        display_name="OpenAI",
         api_key_placeholder="sk-...",
         env_var="OPENAI_API_KEY",
         research_model="gpt-4o",
