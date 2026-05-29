@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as st_components
 from dotenv import load_dotenv
 
 from providers import (
@@ -330,15 +329,6 @@ banking rails in markets where legacy finance is weak.
 def _inject_css() -> None:
     css = Path("style.css").read_text(encoding="utf-8")
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-    st_components.html(
-        """<script>
-if (!window.parent.sessionStorage.getItem('_init')) {
-    window.parent.sessionStorage.setItem('_init', '1');
-    window.parent.location.reload();
-}
-</script>""",
-        height=0,
-    )
 
 
 # ── Brief parsing ─────────────────────────────────────────────────────────────
@@ -614,49 +604,43 @@ def main() -> None:
     if "last_result" not in st.session_state:
         st.session_state.last_result = None
 
-    # Input form — topbar: pub name + divider | company input | Generate | API key | status
+    # Topbar — widgets placed as direct children of the form so CSS flexbox
+    # (on stVerticalBlock) lays them out horizontally. No st.columns: avoids
+    # Streamlit's mount-time width measurement that races CSS on first paint.
     with st.form("company_form"):
-        fc0, fc_search, fc3, fc4 = st.columns([3, 4, 2, 3])
-        with fc0:
+        st.markdown(
+            '<div class="d3-topbar-name-group">'
+            '<span class="d3-pub-name">Company Intelligence Agent</span>'
+            '<span class="d3-topbar-divider"></span>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        company = st.text_input(
+            "Company name",
+            placeholder="e.g. Stripe, Figma, Notion",
+            max_chars=100,
+            label_visibility="collapsed",
+        )
+        generate = st.form_submit_button("Generate ▸", type="primary")
+        with st.popover("🔑 Use Your Own API Key"):
+            st.selectbox(
+                "Provider",
+                options=list(PROVIDER_CONFIGS.keys()),
+                format_func=lambda k: PROVIDER_CONFIGS[k].display_name,
+                key="provider_select",
+            )
+            st.text_input(
+                "API Key",
+                type="password",
+                key="api_key_input",
+                placeholder="sk-...",
+                help="Your key stays in-session and is never stored.",
+            )
+        if st.session_state.get("last_result"):
             st.markdown(
-                '<div class="d3-topbar-name-group" style="height:30.8px;">'
-                '<span class="d3-pub-name">Company Intelligence Agent</span>'
-                '<span class="d3-topbar-divider"></span>'
-                "</div>",
+                '<div class="d3-topbar-status">Status: <strong>✓ READY</strong></div>',
                 unsafe_allow_html=True,
             )
-        with fc_search:
-            sub_input, sub_btn = st.columns([3, 2])
-            with sub_input:
-                company = st.text_input(
-                    "Company name",
-                    placeholder="e.g. Stripe, Figma, Notion",
-                    max_chars=100,
-                    label_visibility="collapsed",
-                )
-            with sub_btn:
-                generate = st.form_submit_button("Generate ▸", type="primary", use_container_width=True)
-        with fc3:
-            with st.popover("🔑 Use Your Own API Key", use_container_width=True):
-                st.selectbox(
-                    "Provider",
-                    options=list(PROVIDER_CONFIGS.keys()),
-                    format_func=lambda k: PROVIDER_CONFIGS[k].display_name,
-                    key="provider_select",
-                )
-                st.text_input(
-                    "API Key",
-                    type="password",
-                    key="api_key_input",
-                    placeholder="sk-...",
-                    help="Your key stays in-session and is never stored.",
-                )
-        with fc4:
-            if st.session_state.get("last_result"):
-                st.markdown(
-                    '<div class="d3-topbar-status">Status: <strong>✓ READY</strong></div>',
-                    unsafe_allow_html=True,
-                )
 
     # Content area — rendered into a placeholder so it can be cleared instantly
     # when the pipeline starts (avoids Streamlit's default gray-out behavior).

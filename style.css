@@ -286,24 +286,6 @@ body { overflow-x: clip !important; }
     overflow: visible !important;
 }
 
-/* Expand the form's inner wrapper chain to match the full 100vw form width.
-   Streamlit computes stVerticalBlock widths from JS layout at render time, before our
-   CSS overrides apply — so emotion-cache classes on these elements have narrow pixel widths.
-   Direct-child selectors prevent this from affecting nested wrappers inside columns.
-   Two parallel chains: on first load Streamlit inserts stFormBody between stForm and
-   stVerticalBlockBorderWrapper; after a rerun/refresh it is absent. Both are handled. */
-[data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"],
-[data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"] > div,
-[data-testid="stForm"] > [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"],
-[data-testid="stForm"] > [data-testid="stFormBody"],
-[data-testid="stForm"] > [data-testid="stFormBody"] > [data-testid="stVerticalBlockBorderWrapper"],
-[data-testid="stForm"] > [data-testid="stFormBody"] > [data-testid="stVerticalBlockBorderWrapper"] > div,
-[data-testid="stForm"] > [data-testid="stFormBody"] > [data-testid="stVerticalBlockBorderWrapper"] > div > [data-testid="stVerticalBlock"] {
-    width: 100% !important;
-    max-width: none !important;
-    box-sizing: border-box !important;
-}
-
 /* Form = the topbar: full-bleed white bar with border-bottom.
    Uses 100vw + calc(50% - 50vw) — same technique as .d3-banner which works on HF Spaces. */
 [data-testid="stForm"] {
@@ -379,54 +361,52 @@ body { overflow-x: clip !important; }
     letter-spacing: .04em !important;
 }
 
-[data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+/* Topbar layout: the form's outer vertical block becomes a horizontal flex row,
+   mirroring .d3-topbar from the standalone mock. Pure CSS — no Streamlit st.columns
+   inside the form, so no JS-measured widths to race against first paint.
+   :has(stFormSubmitButton) anchors to the outer block only; the popover's inner
+   vertical block (no submit button inside) is unaffected and stays stacked. */
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) {
     display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
     gap: 24px !important;
     width: 100% !important;
-    flex-wrap: nowrap !important;
 }
-/* Vertically center content inside each topbar column */
-[data-testid="stForm"] [data-testid="stColumn"] > div {
-    display: flex !important;
-    align-items: center !important;
-    height: 100% !important;
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stElementContainer"] {
+    width: auto !important;
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+}
+/* Search input — fluid up to a 180px cap */
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stElementContainer"]:has([data-testid="stTextInput"]) {
+    flex: 0 1 180px !important;
+    min-width: 0 !important;
+}
+/* Status slot pushes to the right and right-aligns */
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stElementContainer"]:has(.d3-topbar-status) {
+    margin-left: auto !important;
+    text-align: right !important;
 }
 /* Suppress p-tag margin Streamlit injects around markdown content in the topbar */
 [data-testid="stForm"] [data-testid="stMarkdown"] p {
     margin: 0 !important;
     line-height: inherit !important;
 }
-/* Ensure markdown wrappers in the topbar don't introduce vertical offset */
+/* The stMarkdown wrapper (and any inner emotion-classed div) inherits a
+   margin-bottom: -1rem from general body-content styling. Inside the topbar
+   that drops the pub name and status text below the flex center line — zero
+   it out here only. Covers stMarkdown, stMarkdownContainer, and direct div
+   children so whichever element actually carries the emotion class is hit. */
 [data-testid="stForm"] [data-testid="stMarkdown"],
-[data-testid="stForm"] [data-testid="stMarkdown"] > div {
-    display: flex !important;
-    align-items: center !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-/* Override Streamlit's percentage-based column widths for the topbar */
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(1),
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(3) {
-    flex: none !important;
-    width: auto !important;
-    min-width: 0 !important;
-}
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(2) {
-    flex: none !important;
-    width: auto !important;
-    min-width: 0 !important;
-}
-/* Nested horizontal block (input + button): tight gap, vertical centering, no wrap */
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(2) [data-testid="stHorizontalBlock"] {
-    align-items: center !important;
-    gap: 8px !important;
-    flex-wrap: nowrap !important;
+[data-testid="stForm"] [data-testid="stMarkdown"] > div,
+[data-testid="stForm"] [data-testid="stMarkdownContainer"] {
+    margin-bottom: 0 !important;
 }
 
-/* API key popover button (4th topbar column) — ghost style matching .d3-topbar-apikey */
-/* Note: Streamlit popover trigger uses [data-testid="stPopover"] as container */
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(3) [data-testid="stPopover"] button,
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(3) button[kind="secondary"] {
+/* API key popover trigger — ghost style matching .d3-topbar-apikey */
+[data-testid="stForm"] [data-testid="stPopover"] button {
     background: transparent !important;
     color: #6b7280 !important;
     border: 1.5px solid #d1d5db !important;
@@ -439,59 +419,28 @@ body { overflow-x: clip !important; }
     height: 30.8px !important;
     min-height: 30.8px !important;
     max-height: 30.8px !important;
-    width: 100% !important;
     padding: 0 12px !important;
     transition: color .15s, border-color .15s !important;
 }
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(3) [data-testid="stPopover"] button:hover,
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(3) button[kind="secondary"]:hover {
+[data-testid="stForm"] [data-testid="stPopover"] button:hover {
     color: #1a1a1a !important;
     border-color: #9ca3af !important;
     background: transparent !important;
 }
-/* Streamlit wraps popover button text in <p> — override font there too */
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(3) button p,
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(3) button div {
+[data-testid="stForm"] [data-testid="stPopover"] button p,
+[data-testid="stForm"] [data-testid="stPopover"] button div {
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 11px !important;
     letter-spacing: .04em !important;
 }
 /* Hide Streamlit's dropdown chevron SVG from the popover trigger */
-[data-testid="stForm"] [data-testid="stColumn"]:nth-child(3) button svg {
+[data-testid="stForm"] [data-testid="stPopover"] button svg {
     display: none !important;
 }
 
 /* Pull the banner (immediately after the form) flush — cancels Streamlit's default element gap */
 [data-testid="stMarkdown"]:has(.d3-banner) {
     margin-top: -1rem !important;
-}
-
-/* Collapse the zero-height component iframe used for JS injection */
-iframe[height="0"],
-[data-testid="stElementContainer"]:has(iframe[height="0"]),
-[data-testid="stVerticalBlockBorderWrapper"]:has(> [data-testid="stElementContainer"] > iframe[height="0"]) {
-    display: block !important;
-    height: 0 !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-    line-height: 0 !important;
-    font-size: 0 !important;
-}
-
-/* Status column (5th / last topbar column) — fills remaining space, content right-aligned */
-[data-testid="stForm"] [data-testid="stColumn"]:last-child {
-    flex: 1 1 auto !important;
-    width: auto !important;
-    display: flex !important;
-    justify-content: flex-end !important;
-    align-items: center !important;
-}
-[data-testid="stForm"] [data-testid="stColumn"]:last-child [data-testid="stMarkdown"],
-[data-testid="stForm"] [data-testid="stColumn"]:last-child [data-testid="stMarkdown"] > div {
-    width: 100% !important;
-    text-align: right !important;
 }
 
 [data-testid="stDownloadButton"] button {
