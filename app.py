@@ -646,7 +646,7 @@ def main() -> None:
     # Content area — rendered into a placeholder so it can be cleared instantly
     # when the pipeline starts (avoids Streamlit's default gray-out behavior).
     _content = st.empty()
-    if not generate and not st.session_state.disambig_pending:
+    if not generate and not st.session_state.disambig_pending and not st.session_state.get("_pending_run"):
         with _content.container():
             if st.session_state.last_result:
                 r = st.session_state.last_result
@@ -654,19 +654,28 @@ def main() -> None:
             else:
                 _render_welcome()
 
-    # Generate logic
+    # On a fresh Generate click, validate and stash the request, then rerun so
+    # the form re-renders without the "Status: ✓ READY" indicator before the
+    # pipeline starts. The pipeline runs on the next pass via _pending_run.
     if generate:
-        _content.empty()  # clear page content before pipeline starts
         byok = st.session_state.get("api_key_input", "")
         company = sanitize_company(company)
         if not company:
             st.warning("Please enter a valid company name.")
             st.stop()
-        company = company.title()
+        st.session_state.last_result = None
+        st.session_state._pending_run = {"company": company.title(), "byok": byok}
+        st.rerun()
+
+    # Pipeline runs on the rerun triggered above (or after disambiguation)
+    if st.session_state.get("_pending_run"):
+        _pending = st.session_state.pop("_pending_run")
+        company = _pending["company"]
+        byok = _pending["byok"]
+        _content.empty()
 
         st.session_state.stored_api_key = byok.strip()
         st.session_state.disambig_pending = None
-        st.session_state.last_result = None
 
         # 1. Cached result — serve immediately, skip disambiguation
         cached = load_cache(company)
