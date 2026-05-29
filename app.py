@@ -624,11 +624,12 @@ def main() -> None:
             )
             generate = st.form_submit_button("Generate ▸", type="primary")
         with st.popover("🔑 Use Your Own API Key"):
-            st.selectbox(
+            st.radio(
                 "Provider",
                 options=list(PROVIDER_CONFIGS.keys()),
                 format_func=lambda k: PROVIDER_CONFIGS[k].display_name,
                 key="provider_select",
+                horizontal=True,
             )
             st.text_input(
                 "API Key",
