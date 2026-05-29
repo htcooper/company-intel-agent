@@ -370,8 +370,9 @@ body { overflow-x: clip !important; }
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
-    flex-wrap: nowrap !important;
-    gap: 24px !important;
+    flex-wrap: wrap !important;
+    row-gap: 8px !important;
+    column-gap: 24px !important;
     width: 100% !important;
 }
 [data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stElementContainer"] {
@@ -379,10 +380,33 @@ body { overflow-x: clip !important; }
     flex: 0 0 auto !important;
     margin: 0 !important;
 }
-/* Search input — fluid up to a 180px cap */
-[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stElementContainer"]:has([data-testid="stTextInput"]) {
-    flex: 0 1 180px !important;
-    min-width: 0 !important;
+/* Search input — fixed 180px, no shrink */
+[data-testid="stForm"] [data-testid="stTextInput"] {
+    width: 180px !important;
+    flex: 0 0 180px !important;
+}
+/* st.container wrapping (input + Generate): treat the whole container as a
+   single flex child of the outer row so input + button always wrap together.
+   Streamlit 1.56 wraps st.container in [data-testid="stLayoutWrapper"] with a
+   width:100% emotion class — override that, plus the BorderWrapper and the
+   intermediate div, so the container shrinks to its content. */
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stLayoutWrapper"],
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stVerticalBlockBorderWrapper"] > div,
+[data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) [data-testid="stLayoutWrapper"]:has([data-testid="stFormSubmitButton"]) {
+    width: auto !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+}
+/* Inner stVerticalBlock (the container's body) — tight, never-wrapping row.
+   Override the outer block's wrap and gap; also force auto-width so the
+   row only takes as much as input + button need. */
+[data-testid="stForm"] [data-testid="stVerticalBlock"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) {
+    flex-wrap: nowrap !important;
+    column-gap: 8px !important;
+    width: auto !important;
+    max-width: none !important;
 }
 /* Status slot pushes to the right and right-aligns */
 [data-testid="stForm"] [data-testid="stVerticalBlock"]:has([data-testid="stFormSubmitButton"]) > [data-testid="stElementContainer"]:has(.d3-topbar-status) {

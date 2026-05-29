@@ -615,13 +615,14 @@ def main() -> None:
             "</div>",
             unsafe_allow_html=True,
         )
-        company = st.text_input(
-            "Company name",
-            placeholder="e.g. Stripe, Figma, Notion",
-            max_chars=100,
-            label_visibility="collapsed",
-        )
-        generate = st.form_submit_button("Generate ▸", type="primary")
+        with st.container():
+            company = st.text_input(
+                "Company name",
+                placeholder="e.g. Stripe, Figma, Notion",
+                max_chars=100,
+                label_visibility="collapsed",
+            )
+            generate = st.form_submit_button("Generate ▸", type="primary")
         with st.popover("🔑 Use Your Own API Key"):
             st.selectbox(
                 "Provider",
