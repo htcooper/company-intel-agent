@@ -25,6 +25,9 @@ Thumbs.db
 # Local testing notes (not for version control)
 testing/
 
+# Local planning and task notes
+tasks/
+
 # Claude Code local settings (personal permission overrides)
 .claude/settings.local.json
 
