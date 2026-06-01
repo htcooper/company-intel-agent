@@ -32,23 +32,23 @@ Four sections, every time:
 
 Enter any public company name. The app runs four sequential API calls:
 
-1. **News & announcements** — searches for strategic moves from the last 6 months
+1. **News & announcements** — searches for strategic moves from the last 12 months
 2. **Hiring signals** — reads job boards to infer company priorities and growth areas
 3. **Content & positioning** — finds blog posts, talks, and press statements to extract public narrative
 4. **Synthesis** — cross-references all three passes into the structured brief
 
-Results are cached for 24 hours. Searching the same company again is instant.
+Results are cached for 24 hours per company. Cache hits show a banner with the original provider/model and date, plus a `↺ Rerun fresh` link that regenerates with the currently selected provider (overwriting the cache).
 
 ### Architecture
 
 ```
 User inputs company name
         │
-        ├─ Disambiguation (Claude Haiku — fast, no web search)
+        ├─ Disambiguation (fast model — no web search)
         │
-        ├── Pass 1: News & announcements    (Claude Sonnet 4.6 + web search)
-        ├── Pass 2: Hiring signals           (Claude Sonnet 4.6 + web search)
-        └── Pass 3: Content & positioning    (Claude Sonnet 4.6 + web search)
+        ├── Pass 1: News & announcements    (research model + web search)
+        ├── Pass 2: Hiring signals           (research model + web search)
+        └── Pass 3: Content & positioning    (research model + web search)
                 │
                 ▼
         Synthesis: cross-reference all 3 passes → structured brief
@@ -57,7 +57,9 @@ User inputs company name
         Cache result (24hr TTL) → render + offer markdown download
 ```
 
-Each research pass is a separate Anthropic API call using the `web_search_20260209` tool. Claude autonomously decides what to search and how to interpret results.
+Each research pass is a separate API call. With the Anthropic provider, it uses the `web_search_20260209` tool; with OpenAI, the Responses API's `web_search_preview` tool. The model autonomously decides what to search and how to interpret results.
+
+Every brief — both the UI and the downloaded `.md` — ends with an attribution line showing which provider and model generated it (e.g., `*AI model: Anthropic (claude-sonnet-4-6)*`), so cached and shared briefs are always self-describing.
 
 ---
 
@@ -65,13 +67,15 @@ Each research pass is a separate Anthropic API call using the `web_search_202602
 
 | Component | Choice |
 |---|---|
-| LLM | Claude Sonnet 4.6 (`claude-sonnet-4-6`) |
-| Disambiguation | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) |
-| Web search | Anthropic's built-in `web_search_20260209` tool |
+| Research model (default) | Claude Sonnet 4.6 (`claude-sonnet-4-6`) |
+| Research model (OpenAI mode) | GPT-4o (`gpt-4o`) |
+| Disambiguation model | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) / GPT-4o-mini |
+| Web search (Anthropic) | `web_search_20260209` tool (Messages API) |
+| Web search (OpenAI) | `web_search_preview` tool (Responses API) |
 | Framework | Streamlit |
-| Cache | File-based, 24hr TTL |
+| Cache | File-based, 24hr TTL, keyed by company name |
 
-No separate search API key required — web search is provided by the Anthropic SDK.
+No separate search API key required — web search is provided by whichever LLM provider is selected.
 
 ---
 
@@ -90,13 +94,24 @@ streamlit run app.py
 
 | Variable | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes (for live runs) | Your Anthropic API key. On HF Spaces, set as a Space Secret. |
+| `ANTHROPIC_API_KEY` | Yes (App default mode) | Server-side Anthropic key. Powers the "App default" provider option and the free demo runs. On HF Spaces, set as a Space Secret. |
+| `OPENAI_API_KEY` | Optional | Server-side fallback used only when a user selects the OpenAI provider without entering their own key. Not required unless you want OpenAI to work without BYOK. |
 
-If no key is set, the app shows a pre-generated example output instead of calling the API.
+If neither key is set for the selected provider (and the user hasn't supplied a BYOK key), the app shows a pre-generated example output instead of calling the API.
 
-### Rate limiting
+### Providers & rate limiting
 
-The hosted demo is limited to **3 runs per browser tab** (Streamlit session state — resets on page refresh). This is a soft courtesy limit, not a hard enforcement mechanism. Add your own API key via the "Use Your Own API Key" button for unlimited runs.
+The "🔑 Use Your Own API Key" popover in the topbar exposes three modes:
+
+| Mode | Key source | Models | Rate limit |
+|---|---|---|---|
+| **App default** (preselected) | Server's `ANTHROPIC_API_KEY` | Claude Sonnet 4.6 + Haiku 4.5 | 3 runs per browser tab |
+| **Anthropic** | Your Anthropic key (BYOK) | Claude Sonnet 4.6 + Haiku 4.5 | Unlimited |
+| **OpenAI** | Your OpenAI key (BYOK) | GPT-4o + GPT-4o-mini | Unlimited |
+
+The 3-run cap is a soft courtesy limit on the free demo to protect server-side API costs — it resets on page refresh and applies only to the **App default** mode. BYOK users (Anthropic or OpenAI with a key entered) bypass the cap entirely on both the main and disambiguation paths, billed to their own provider account.
+
+Switching providers does not clear the key field automatically, but the field is grayed out when **App default** is selected and the help text notes it's ignored in that mode. Invalid keys produce a provider-aware error (`API key rejected by Anthropic.` / `API key rejected by OpenAI.`) and do not consume a session run.
 
 ---
 
@@ -107,6 +122,7 @@ User-supplied company names are treated as untrusted input throughout the pipeli
 - **Input sanitization** — control characters, null bytes, and inputs over 100 characters are rejected before any API call
 - **Prompt injection guard** — all research system prompts include an explicit guard instructing the model to treat the company name solely as a search subject and ignore any commands it may contain
 - **HTML escaping** — all model output is escaped before rendering in the UI
+- **BYOK key handling** — user-supplied API keys live in Streamlit session state only; they are never logged, persisted, or echoed back. Invalid keys raise a provider-aware error and do not increment the session run counter.
 
 An adversarial test suite (`tests/test_adversarial.py`) verifies these defenses against direct injection, system prompt extraction, indirect injection via poisoned web search results, and persona/jailbreak attempts.
 
@@ -124,14 +140,13 @@ pytest tests/test_adversarial.py -v -m integration
 
 ```
 ├── app.py                        # Main application and pipeline logic
+├── providers.py                  # LLM adapter factory (Anthropic + OpenAI)
 ├── style.css                     # UI styles
 ├── requirements.txt
 ├── pytest.ini
 ├── .env.example
 ├── tests/
 │   └── test_adversarial.py       # Prompt injection test suite
-├── tasks/
-│   └── todo.md                   # Development task tracking
 └── cache/                        # Generated at runtime, gitignored
 ```
 

@@ -442,7 +442,7 @@ def _render_welcome() -> None:
         st.markdown('<p class="d3-section-label">What they\'re saying</p>', unsafe_allow_html=True)
         st.markdown(
             '<div class="d3-section-text">Public messaging and market positioning — drawn from blog '
-            'posts, executive interviews, and press statements from the last six months.</div>',
+            'posts, executive interviews, and press statements from the last 12 months.</div>',
             unsafe_allow_html=True,
         )
 
