@@ -172,6 +172,28 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
 }
 .d3-sidebar-text { font-size: 13px; color: #e5e7eb; line-height: 1.8; }
 
+.d3-sidebar-list {
+  margin: 0 !important;
+  padding-left: 18px !important;
+  list-style: disc !important;
+  font-size: 13.5px !important;
+  color: #e5e7eb !important;
+  line-height: 1.55 !important;
+}
+.d3-sidebar-list li {
+  font-size: 13.5px !important;
+  line-height: 1.55 !important;
+  margin-bottom: 8px !important;
+  color: #e5e7eb !important;
+}
+.d3-sidebar-list li:last-child {
+  margin-bottom: 0 !important;
+}
+.d3-sidebar-list li::marker {
+  color: #f59e0b !important;
+  font-size: 12px !important;
+}
+
 .d3-download-btn {
   display: block; width: 100%;
   background: transparent; color: #1a1a1a;

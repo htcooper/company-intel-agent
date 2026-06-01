@@ -460,8 +460,12 @@ def _render_welcome() -> None:
             """
             <div class="d3-sidebar-box">
                 <div class="d3-sidebar-label">How to start</div>
-                <div class="d3-sidebar-text">Enter a company name in the search bar above and
-                click Generate. Results are cached for 24 hours.</div>
+                <ul class="d3-sidebar-list">
+                    <li>Enter a company name above and click Generate</li>
+                    <li>The built-in API key has a 3-run demo limit per session; add your own key in the popover for unlimited runs</li>
+                    <li>Briefs can be downloaded as Markdown (.md) files</li>
+                    <li>Results are cached for 24 hours; use &ldquo;&#8635; Rerun fresh&rdquo; to regenerate with the currently selected provider</li>
+                </ul>
             </div>
             """,
             unsafe_allow_html=True,
