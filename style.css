@@ -466,6 +466,42 @@ body { overflow-x: clip !important; }
     display: none !important;
 }
 
+/* The popover body is portalled out of stForm/stPopover, so we
+   anchor on Streamlit's auto-generated st-key-* classes (derived
+   from the widget's Python key= argument). These IDs are stable
+   and live on the stElementContainer regardless of portal location. */
+
+/* Gray out the BYOK key field when "App default" (the first radio
+   in the provider_select group) is selected. Pure CSS — radio
+   :checked updates in the DOM immediately. The :has() walks from
+   the shared parent stVerticalBlock down to the radio, then over
+   to the sibling api_key_input. */
+[data-testid="stVerticalBlock"]:has(.st-key-provider_select [role="radiogroup"] > label:first-child input:checked) .st-key-api_key_input [data-testid="stTextInput"] {
+    opacity: 0.5 !important;
+    pointer-events: none !important;
+}
+
+/* Pull the "?" help icon next to the "API Key" label.
+   Streamlit's default label is a flex row with the help slot
+   pushed to flex-end. Force flex-start + a small gap. */
+.st-key-api_key_input [data-testid="stWidgetLabel"] {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: auto !important;
+    gap: 6px !important;
+}
+.st-key-api_key_input [data-testid="stWidgetLabel"] > div:has([data-testid="stTooltipIcon"]) {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    margin-left: 0 !important;
+}
+.st-key-api_key_input [data-testid="stTooltipHoverTarget"] {
+    justify-content: flex-start !important;
+    width: auto !important;
+}
+
 /* Pull the banner (immediately after the form) flush — cancels Streamlit's default element gap */
 [data-testid="stMarkdown"]:has(.d3-banner) {
     margin-top: -1rem !important;

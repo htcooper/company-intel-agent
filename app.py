@@ -399,12 +399,6 @@ def _provider_label(key: str) -> str:
     return PROVIDER_CONFIGS[key].display_name
 
 
-def _on_provider_change() -> None:
-    """Clear any stale API key when the user switches provider."""
-    if "api_key_input" in st.session_state:
-        st.session_state.api_key_input = ""
-
-
 def _current_provider_display() -> str:
     """Display name for the provider currently selected in the popover."""
     sel = st.session_state.get("provider_select", "default")
@@ -693,6 +687,10 @@ def main() -> None:
     # Topbar — widgets placed as direct children of the form so CSS flexbox
     # (on stVerticalBlock) lays them out horizontally. No st.columns: avoids
     # Streamlit's mount-time width measurement that races CSS on first paint.
+    # The BYOK popover stays inside the form so it joins the same flex row
+    # (architecture from commit 10983e4). Streamlit batches form-internal
+    # widget state until submit, so the popover content cannot reactively
+    # show/hide the key field — both radio and key field are always rendered.
     with st.form("company_form"):
         st.markdown(
             '<div class="d3-topbar-name-group">'
@@ -716,27 +714,15 @@ def main() -> None:
                 format_func=_provider_label,
                 key="provider_select",
                 horizontal=True,
-                on_change=_on_provider_change,
             )
-            if st.session_state.provider_select == "default":
-                st.markdown(
-                    '<div style="font-size:12px;color:#6b7280;border:1px dashed #c8bfa8;'
-                    'padding:8px 12px;border-radius:3px;font-family:Inter,sans-serif;">'
-                    '✓ Using app\'s built-in Anthropic key'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                _placeholder = PROVIDER_CONFIGS[
-                    st.session_state.provider_select
-                ].api_key_placeholder
-                st.text_input(
-                    "API Key",
-                    type="password",
-                    key="api_key_input",
-                    placeholder=_placeholder,
-                    help="Your key stays in-session and is never stored.",
-                )
+            st.text_input(
+                "API Key",
+                type="password",
+                key="api_key_input",
+                placeholder="sk-...",
+                help="Your key stays in-session and is never stored. "
+                "Ignored when 'App default' is selected.",
+            )
         if st.session_state.get("last_result"):
             st.markdown(
                 '<div class="d3-topbar-status">Status: <strong>✓ READY</strong></div>',
