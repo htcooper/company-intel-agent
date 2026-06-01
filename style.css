@@ -502,6 +502,19 @@ body { overflow-x: clip !important; }
     width: auto !important;
 }
 
+/* Shrink the radio option labels ("App default" / "Anthropic" /
+   "OpenAI") to match body text. Streamlit's BaseWeb radio defaults
+   to a larger size than the surrounding popover text. */
+.st-key-provider_select [role="radiogroup"] [data-testid="stMarkdownContainer"] p {
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+    margin: 0 !important;
+}
+/* Re-center the radio circle vertically with the (now smaller) text. */
+.st-key-provider_select [role="radiogroup"] label {
+    align-items: center !important;
+}
+
 /* Pull the banner (immediately after the form) flush — cancels Streamlit's default element gap */
 [data-testid="stMarkdown"]:has(.d3-banner) {
     margin-top: -1rem !important;
