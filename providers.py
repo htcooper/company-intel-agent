@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 # ── Normalized response type ──────────────────────────────────────────────────
@@ -59,6 +60,22 @@ PROVIDER_CONFIGS: dict[str, ProviderConfig] = {
         fast_model="gpt-4o-mini",
     ),
 }
+
+
+# ── Source URL cleanup ────────────────────────────────────────────────────────
+
+
+def _clean_url(url: str | None) -> str | None:
+    """Drop utm_* tracking parameters (e.g. OpenAI's ?utm_source=openai),
+    keeping every other query parameter and the fragment."""
+    if not url:
+        return url
+    parts = urlsplit(url)
+    if "utm_" not in parts.query:
+        return url
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+             if not k.lower().startswith("utm_")]
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 # ── Adapter protocol ──────────────────────────────────────────────────────────
@@ -180,7 +197,7 @@ class AnthropicAdapter:
         for block in response.content:
             if block.type == "text":
                 for c in getattr(block, "citations", None) or []:
-                    url = getattr(c, "url", None)
+                    url = _clean_url(getattr(c, "url", None))
                     if url and url not in seen:
                         seen.add(url)
                         sources.append({"url": url, "title": getattr(c, "title", url)})
@@ -189,7 +206,7 @@ class AnthropicAdapter:
             for block in response.content:
                 if getattr(block, "type", None) == "web_search_tool_result":
                     for result in getattr(block, "content", []) or []:
-                        url = getattr(result, "url", None)
+                        url = _clean_url(getattr(result, "url", None))
                         if url and url not in seen:
                             seen.add(url)
                             sources.append(
@@ -279,7 +296,7 @@ class OpenAIAdapter:
             if getattr(ann, "type", None) == "url_citation":
                 citation = getattr(ann, "url_citation", None)
                 if citation:
-                    url = getattr(citation, "url", None)
+                    url = _clean_url(getattr(citation, "url", None))
                     title = getattr(citation, "title", url)
                     if url and url not in seen:
                         seen.add(url)
@@ -308,7 +325,7 @@ class OpenAIAdapter:
                 for ann in getattr(content, "annotations", None) or []:
                     if getattr(ann, "type", None) != "url_citation":
                         continue
-                    url = getattr(ann, "url", None)
+                    url = _clean_url(getattr(ann, "url", None))
                     title = getattr(ann, "title", url)
                     if url and url not in seen:
                         seen.add(url)

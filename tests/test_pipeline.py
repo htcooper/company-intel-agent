@@ -247,3 +247,28 @@ class TestDisambiguate:
     def test_unparseable_output_defaults_to_clear(self):
         adapter = _TextAdapter("")
         assert app._disambiguate(adapter, "Acme") == {"status": "clear", "company": "Acme"}
+
+
+class TestSourceUrlCleanup:
+    @pytest.mark.parametrize("raw,clean", [
+        ("https://trueup.io/co/linear?utm_source=openai", "https://trueup.io/co/linear"),
+        ("https://ex.com/a?id=7&utm_source=openai&utm_medium=x", "https://ex.com/a?id=7"),
+        ("https://ex.com/a?utm_source=openai#section", "https://ex.com/a#section"),
+        ("https://ex.com/a?q=utm", "https://ex.com/a?q=utm"),
+        ("https://ex.com/plain", "https://ex.com/plain"),
+        (None, None),
+    ])
+    def test_clean_url(self, raw, clean):
+        from providers import _clean_url
+        assert _clean_url(raw) == clean
+
+    def test_openai_sources_are_cleaned_and_deduped(self):
+        from types import SimpleNamespace as NS
+        from providers import OpenAIAdapter
+        ann = lambda url: NS(type="url_citation", url=url, title="T")
+        response = NS(output=[NS(type="message", content=[NS(annotations=[
+            ann("https://ex.com/page?utm_source=openai"),
+            ann("https://ex.com/page"),
+        ])])])
+        sources = OpenAIAdapter._extract_responses_sources(None, response)
+        assert sources == [{"url": "https://ex.com/page", "title": "T"}]
