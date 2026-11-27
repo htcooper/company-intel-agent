@@ -22,6 +22,7 @@ from providers import (
     PROVIDER_CONFIGS,
     LLMAuthError,
     LLMRateLimitError,
+    LLMRefusalError,
     LLMResponse,
     LLMTimeoutError,
 )
@@ -126,15 +127,26 @@ class TestParallelPipeline:
         assert any("(4/4)" in m for m in messages)
         assert messages[-1].startswith("🧠")
 
-    def test_profile_uses_fast_model_others_use_research(self, fake):
+    def test_each_step_uses_its_model_tier(self, fake):
         brief = _run()
         assert fake.model_for("profile") == ANTHROPIC.fast_model
-        for key in ("news", "hiring", "content", "synthesis"):
+        for key in ("news", "hiring", "content"):
             assert fake.model_for(key) == ANTHROPIC.research_model
+        assert fake.model_for("synthesis") == ANTHROPIC.synthesis_model
         assert (
-            f"*AI model: Anthropic ({ANTHROPIC.research_model}, {ANTHROPIC.fast_model})*"
-            in brief
+            f"*AI model: Anthropic ({ANTHROPIC.synthesis_model}, "
+            f"{ANTHROPIC.fast_model}, {ANTHROPIC.research_model})*" in brief
         )
+
+    def test_refused_pass_continues_with_placeholder(self, fake):
+        fake.errors = {("anthropic", "hiring"): LLMRefusalError("declined")}
+        _run()
+        assert app._PASS_FAILED_TEXT in fake.synthesis_prompts[0]
+
+    def test_refused_synthesis_raises(self, fake):
+        fake.errors = {("anthropic", "synthesis"): LLMRefusalError("declined")}
+        with pytest.raises(LLMRefusalError):
+            _run(fallback=("openai", "k"))
 
 
 class TestRateLimitFallback:
@@ -154,7 +166,7 @@ class TestRateLimitFallback:
     def test_synthesis_falls_back_too(self, fake):
         fake.errors = {("anthropic", "synthesis"): LLMRateLimitError("429")}
         brief = _run(fallback=("openai", "k"))
-        assert ("openai", OPENAI.research_model, "synthesis") in fake.calls
+        assert ("openai", OPENAI.synthesis_model, "synthesis") in fake.calls
         assert "OpenAI fallback" in brief
 
     def test_no_fallback_raises_rate_limit(self, fake):
@@ -272,3 +284,62 @@ class TestSourceUrlCleanup:
         ])])])
         sources = OpenAIAdapter._extract_responses_sources(None, response)
         assert sources == [{"url": "https://ex.com/page", "title": "T"}]
+
+
+class _RecordingClient:
+    """Fake anthropic.Anthropic that records which endpoint was used and how."""
+
+    def __init__(self, stop_reason="end_turn"):
+        from types import SimpleNamespace as NS
+        self.calls: list[tuple[str, dict]] = []
+        response = NS(content=[NS(type="text", text="ok", citations=None)], stop_reason=stop_reason)
+
+        def recorder(endpoint):
+            def create(**kwargs):
+                self.calls.append((endpoint, kwargs))
+                return response
+            return create
+
+        self.messages = NS(create=recorder("messages"))
+        self.beta = NS(messages=NS(create=recorder("beta")))
+
+
+def _adapter(model, client):
+    from providers import AnthropicAdapter
+    adapter = AnthropicAdapter("key", model)
+    adapter._client = client
+    return adapter
+
+
+class TestAnthropicRequestOptions:
+    @pytest.mark.parametrize("model", ["claude-sonnet-5-5", "claude-opus-5-5"])
+    def test_new_models_get_effort_and_refusal_fallback(self, model):
+        client = _RecordingClient()
+        _adapter(model, client).call_text_only(None, "hi", max_tokens=100)
+        endpoint, kwargs = client.calls[0]
+        assert endpoint == "beta"
+        assert kwargs["fallbacks"] == "default"
+        assert kwargs["betas"] == ["server-side-fallback-2026-07-01"]
+        assert kwargs["output_config"] == {"effort": "medium"}
+        assert kwargs["model"] == model
+
+    def test_haiku_uses_plain_endpoint(self):
+        """Haiku 5.5 has no server-side refusal fallback."""
+        client = _RecordingClient()
+        _adapter("claude-haiku-5-5", client).call_with_search("sys", "hi", 100, 3)
+        endpoint, kwargs = client.calls[0]
+        assert endpoint == "messages"
+        assert "fallbacks" not in kwargs and "output_config" not in kwargs
+        assert kwargs["tools"][0]["type"] == "web_search_20250305"
+
+    def test_search_passes_system_and_dynamic_tool(self):
+        client = _RecordingClient()
+        _adapter("claude-sonnet-5-5", client).call_with_search("sys", "hi", 100, 3)
+        _, kwargs = client.calls[0]
+        assert kwargs["system"] == "sys"
+        assert kwargs["tools"][0]["type"] == "web_search_20260209"
+
+    def test_refusal_raises(self):
+        client = _RecordingClient(stop_reason="refusal")
+        with pytest.raises(LLMRefusalError):
+            _adapter("claude-sonnet-5-5", client).call_text_only(None, "hi", 100)

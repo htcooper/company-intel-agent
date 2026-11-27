@@ -16,6 +16,7 @@ from providers import (
     PROVIDER_CONFIGS,
     LLMAuthError,
     LLMRateLimitError,
+    LLMRefusalError,
     LLMTimeoutError,
     make_adapter,
 )
@@ -34,6 +35,10 @@ MAX_CONCURRENT_PASSES = 4
 RESEARCH_MAX_RETRIES = 4
 # A brief is still produced if up to this many passes fail; more aborts the run.
 MAX_FAILED_PASSES = 1
+# Output caps. Newer models think by default and thinking counts toward
+# max_tokens, so these leave room for it. (The old 2048 cap cut off research.)
+RESEARCH_MAX_TOKENS = 8000
+SYNTHESIS_MAX_TOKENS = 8000
 _PASS_FAILED_TEXT = "Research for this pass failed; no data available."
 
 # ── Cache ────────────────────────────────────────────────────────────────────
@@ -241,7 +246,7 @@ def _run_research_pass(
     company: str,
     system_prompt: str,
     user_prompt: str,
-    max_tokens: int = 2048,
+    max_tokens: int = RESEARCH_MAX_TOKENS,
     max_search_uses: int = 3,
 ) -> tuple[str, list[dict]]:
     result = adapter.call_with_search(
@@ -260,7 +265,7 @@ class PassSpec:
     system: str
     user: str
     tier: str  # "fast" → ProviderConfig.fast_model, "research" → research_model
-    max_tokens: int = 2048
+    max_tokens: int = RESEARCH_MAX_TOKENS
     max_search_uses: int = 3
 
 
@@ -298,7 +303,7 @@ def _run_synthesis(
             pass2=pass2,
             pass3=pass3,
         ),
-        max_tokens=1536,
+        max_tokens=SYNTHESIS_MAX_TOKENS,
     )
     return result.text
 
@@ -346,7 +351,11 @@ ModelUse = tuple[str, str, bool]
 
 def _model_for(provider: str, tier: str) -> str:
     config = PROVIDER_CONFIGS[provider]
-    return config.fast_model if tier == "fast" else config.research_model
+    return {
+        "fast": config.fast_model,
+        "research": config.research_model,
+        "synthesis": config.synthesis_model,
+    }[tier]
 
 
 def _call_with_fallback(
@@ -456,7 +465,7 @@ def run_pipeline(
             results["news"][0], results["hiring"][0], results["content"][0],
             pass0=results["profile"][0],
         ),
-        provider, api_key, "research", fallback,
+        provider, api_key, "synthesis", fallback,
     )
 
     # Aggregate and deduplicate sources in fixed pass order (not completion order)
@@ -911,16 +920,17 @@ Company name
     └── Pass 3: Content & positioning  (research model + web search)  ┘
             │
             ▼
-    Synthesis → structured 1-page brief
+    Synthesis → structured 1-page brief  (synthesis model)
             │
             ▼
     Cache result (24hr TTL)
 ```
 
 The four research passes are independent API calls that run in parallel; the
-model autonomously decides what to search. The factual company-profile pass
-uses a faster, cheaper model. If the app's key hits a rate limit, a pass can
-fall back to the other provider. Results are cached for 24 hours so repeat
+model autonomously decides what to search. Each step uses a model sized to the
+job: with Anthropic, Haiku 5.5 for the factual company profile, Sonnet 5.5 for
+the other research passes, and Opus 5.5 to write the final brief. If the app's
+key hits a rate limit, a call can fall back to the other provider. Results are cached for 24 hours so repeat
 lookups are instant and cost-free.
 
 ---
@@ -973,6 +983,11 @@ def _run_and_render(company: str, api_key: str, provider: str, byok: str = "") -
             _render_result_editorial("Stripe", EXAMPLE_BRIEF)
     except PipelineError as e:
         st.error(f"Couldn't build a brief: {e} Please try again.")
+    except LLMRefusalError:
+        st.error(
+            "The AI model declined to write a brief for this company. "
+            "Try a different company, or switch providers in the API key menu."
+        )
     except LLMTimeoutError:
         st.error("Request timed out after 90 seconds. Please try again.")
     except Exception as e:

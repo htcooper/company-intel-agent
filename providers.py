@@ -29,6 +29,10 @@ class LLMTimeoutError(Exception):
     pass
 
 
+class LLMRefusalError(Exception):
+    """The model (and any server-side fallback) declined the request."""
+
+
 # ── Provider config ───────────────────────────────────────────────────────────
 
 
@@ -38,8 +42,9 @@ class ProviderConfig:
     display_name: str
     api_key_placeholder: str
     env_var: str
-    research_model: str  # research passes + synthesis
-    fast_model: str      # disambiguation + resolve (cheaper/faster)
+    research_model: str   # news / hiring / content research passes
+    synthesis_model: str  # final brief
+    fast_model: str       # company profile, disambiguation, resolve (cheaper/faster)
 
 
 PROVIDER_CONFIGS: dict[str, ProviderConfig] = {
@@ -48,7 +53,8 @@ PROVIDER_CONFIGS: dict[str, ProviderConfig] = {
         display_name="Anthropic",
         api_key_placeholder="sk-ant-...",
         env_var="ANTHROPIC_API_KEY",
-        research_model="claude-sonnet-4-6",
+        research_model="claude-sonnet-5-5",
+        synthesis_model="claude-opus-5-5",
         fast_model="claude-haiku-5-5",
     ),
     "openai": ProviderConfig(
@@ -57,6 +63,7 @@ PROVIDER_CONFIGS: dict[str, ProviderConfig] = {
         api_key_placeholder="sk-...",
         env_var="OPENAI_API_KEY",
         research_model="gpt-4o",
+        synthesis_model="gpt-4o",
         fast_model="gpt-4o-mini",
     ),
 }
@@ -121,6 +128,16 @@ def _anthropic_search_tool(model: str, max_uses: int) -> dict:
     return {"type": "web_search_20250305", "name": "web_search", "max_uses": max_uses}
 
 
+# Per-model request options. Models listed here think by default (thinking
+# tokens count toward max_tokens), take an explicit effort level, and get the
+# server-side refusal fallback, which reruns a declined request on another model.
+_MODEL_OPTIONS: dict[str, dict] = {
+    "claude-sonnet-5-5": {"effort": "medium", "refusal_fallback": True},
+    "claude-opus-5-5": {"effort": "medium", "refusal_fallback": True},
+}
+_REFUSAL_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+
 class AnthropicAdapter:
     def __init__(
         self, api_key: str, model: str, timeout: float = 90.0, max_retries: int = 2
@@ -142,21 +159,12 @@ class AnthropicAdapter:
         max_tokens: int,
         max_search_uses: int,
     ) -> LLMResponse:
-        tools = [_anthropic_search_tool(self._model, max_search_uses)]
-        try:
-            response = self._client.messages.create(
-                model=self._model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-                tools=tools,
-            )
-        except self._anthropic.AuthenticationError as e:
-            raise LLMAuthError(str(e)) from e
-        except self._anthropic.RateLimitError as e:
-            raise LLMRateLimitError(str(e)) from e
-        except self._anthropic.APITimeoutError as e:
-            raise LLMTimeoutError(str(e)) from e
+        response = self._create(
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            max_tokens=max_tokens,
+            tools=[_anthropic_search_tool(self._model, max_search_uses)],
+        )
         return LLMResponse(
             text=self._extract_text(response),
             sources=self._extract_sources(response),
@@ -169,21 +177,36 @@ class AnthropicAdapter:
         max_tokens: int,
     ) -> LLMResponse:
         kwargs: dict = {
-            "model": self._model,
-            "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": user}],
+            "max_tokens": max_tokens,
         }
         if system:
             kwargs["system"] = system
+        response = self._create(**kwargs)
+        return LLMResponse(text=self._extract_text(response), sources=[])
+
+    def _create(self, **kwargs):
+        """messages.create with per-model options and error mapping."""
+        kwargs["model"] = self._model
+        options = _MODEL_OPTIONS.get(self._model, {})
+        if "effort" in options:
+            kwargs["output_config"] = {"effort": options["effort"]}
         try:
-            response = self._client.messages.create(**kwargs)
+            if options.get("refusal_fallback"):
+                response = self._client.beta.messages.create(
+                    betas=[_REFUSAL_FALLBACK_BETA], fallbacks="default", **kwargs
+                )
+            else:
+                response = self._client.messages.create(**kwargs)
         except self._anthropic.AuthenticationError as e:
             raise LLMAuthError(str(e)) from e
         except self._anthropic.RateLimitError as e:
             raise LLMRateLimitError(str(e)) from e
         except self._anthropic.APITimeoutError as e:
             raise LLMTimeoutError(str(e)) from e
-        return LLMResponse(text=self._extract_text(response), sources=[])
+        if response.stop_reason == "refusal":
+            raise LLMRefusalError(f"{self._model} declined the request")
+        return response
 
     def _extract_text(self, response) -> str:
         return "\n\n".join(
