@@ -19,7 +19,13 @@ A Streamlit app that turns a company name into a 1-page executive intelligence b
 
 ## What it produces
 
-Four sections, every time:
+An **At a glance** overview, for readers who don't know the company yet:
+
+- **Key facts** — founded (and by whom), headquarters, CEO, headcount, ownership (public ticker or latest private valuation), and main competitors
+- **What they do** — what the company sells and to whom, in plain language
+- **What sets them apart** — concrete differentiation from the named competitors (business model, technology, distribution, pricing, or market focus)
+
+Followed by four sections on recent strategy:
 
 - **What they're doing** — concrete recent moves: product launches, acquisitions, partnerships, funding
 - **What they're saying** — public narrative and positioning from blog posts, exec interviews, press statements
@@ -92,6 +98,8 @@ cp .env.example .env
 streamlit run app.py
 ```
 
+> **Windows on ARM:** Streamlit depends on `pyarrow`, which has no native Windows ARM64 wheel. Install the x64 build of Python from python.org (it runs under emulation alongside an ARM64 install) and create the venv with it, e.g. `py -V:3.13 -m venv .venv`. WSL2 also works.
+
 ### Environment variables
 
 | Variable | Required | Description |
@@ -129,12 +137,14 @@ User-supplied company names are treated as untrusted input throughout the pipeli
 An adversarial test suite (`tests/test_adversarial.py`) verifies these defenses against direct injection, system prompt extraction, indirect injection via poisoned web search results, and persona/jailbreak attempts.
 
 ```bash
-# Run security tests (no API key needed)
-pytest tests/test_adversarial.py -v -m "not integration"
+# Run security and brief-parsing tests (no API key needed)
+pytest tests -v -m "not integration"
 
-# Run full suite including live API tests
+# Run live API tests
 pytest tests/test_adversarial.py -v -m integration
 ```
+
+`tests/test_parse_brief.py` covers brief parsing, including the At a glance sections and backward compatibility with briefs cached before they existed.
 
 ---
 
@@ -148,7 +158,8 @@ pytest tests/test_adversarial.py -v -m integration
 ├── pytest.ini
 ├── .env.example
 ├── tests/
-│   └── test_adversarial.py       # Prompt injection test suite
+│   ├── test_adversarial.py       # Prompt injection test suite
+│   └── test_parse_brief.py       # Brief parsing tests
 └── cache/                        # Generated at runtime, gitignored
 ```
 
