@@ -11,7 +11,7 @@ pinned: false
 
 # Company Intelligence Agent
 
-A Streamlit app that turns a company name into a 1-page executive intelligence brief in under 2 minutes. It runs a multi-pass agentic AI pipeline — not a single prompt — that autonomously researches the company across four dimensions and synthesizes the findings into a structured brief covering company background, strategy, narrative, and talent signals.
+A Streamlit app that turns a company name into a 1-page executive intelligence brief in about 5–6 minutes. It runs a multi-pass agentic AI pipeline — not a single prompt — that autonomously researches the company across four dimensions and synthesizes the findings into a structured brief covering company background, strategy, narrative, and talent signals.
 
 **[Live demo →](https://huggingface.co/spaces/htcooper/company-intel-agent)**
 
