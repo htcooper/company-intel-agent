@@ -13,7 +13,7 @@ pinned: false
 
 A Streamlit app that turns a company name into a 1-page executive intelligence brief in about 2 minutes. It runs a multi-pass agentic AI pipeline — not a single prompt — that autonomously researches the company across four dimensions and synthesizes the findings into a structured brief covering company background, strategy, narrative, and talent signals.
 
-**[Live demo →](https://huggingface.co/spaces/htcooper/company-intel-agent)**
+**[Live demo →](https://huggingface.co/spaces/htcooper/company-intel-agent)** · **[November 2026 improvements →](docs/improvements-2026-11.md)**
 
 ---
 
@@ -71,7 +71,7 @@ Each research pass is a separate API call. With the Anthropic provider, it uses 
 
 **Model routing.** Each step uses a model sized to the job. With Anthropic: Haiku 5.5 for the factual company-profile pass, Sonnet 5.5 for the news, hiring, and content passes, and Opus 5.5 to write the final brief. Sonnet 5.5 and Opus 5.5 run at `medium` effort with Anthropic's server-side refusal fallback (`fallbacks: "default"`), which reruns a declined request on another model. With OpenAI, GPT-4o-mini handles the profile and GPT-4o the rest.
 
-In a side-by-side test on three companies, this mix cost about 10% less per brief than running everything on Sonnet 4.6, took about 50 seconds instead of 80 for research and synthesis, cited more sources, and produced more current briefs.
+In a side-by-side test on three companies, this mix cost about 5% less per brief than running everything on Sonnet 4.6, took about 50 seconds instead of 80 for research and synthesis, cited more sources, and produced more current briefs.
 
 **Rate limits.** The SDKs retry rate-limited (429) calls with backoff. If a call is still rate-limited:
 - **App default / server keys:** if the server also has the *other* provider's key (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`), that pass or synthesis reruns on the other provider. Without it, the app shows the pre-generated example brief.
@@ -168,6 +168,8 @@ pytest tests/test_adversarial.py -v -m integration
 ├── requirements.txt
 ├── pytest.ini
 ├── .env.example
+├── docs/
+│   └── improvements-2026-11.md   # Write-up of the Nov 2026 improvements
 ├── tests/
 │   ├── test_adversarial.py       # Prompt injection test suite
 │   ├── test_parse_brief.py       # Brief parsing tests
