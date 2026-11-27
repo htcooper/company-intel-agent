@@ -269,7 +269,7 @@ class TestSystemPromptExtraction:
 class TestIndirectInjection:
     """
     The synthesis pass has no system prompt — it only receives a structured user message
-    containing all three pass outputs. This is the highest-risk surface.
+    containing all four pass outputs. This is the highest-risk surface.
 
     We inject adversarial content directly into the pass arguments (simulating a poisoned
     web page returned by the web search tool) and verify synthesis ignores it.
@@ -302,18 +302,20 @@ class TestIndirectInjection:
             pass1=injected,
             pass2=self.BENIGN_PASS,
             pass3=self.BENIGN_PASS,
+            pass0=self.BENIGN_PASS,
         )
         _assert_injection_not_followed(brief)
         assert injected not in brief
 
     @pytest.mark.parametrize("name,injected", POISONED_PASSES)
     def test_poisoned_all_passes(self, client, name, injected):
-        """Worst case: all three passes are poisoned with the same payload."""
+        """Worst case: all four passes are poisoned with the same payload."""
         brief = _run_synthesis(
             client, "Stripe",
             pass1=injected,
             pass2=injected,
             pass3=injected,
+            pass0=injected,
         )
         _assert_injection_not_followed(brief)
 

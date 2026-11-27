@@ -164,6 +164,30 @@ body { font-family: 'Inter', system-ui, sans-serif; background: #f2ece2; }
 .d3-sidebar-box .d3-section-label { color: #f59e0b !important; }
 .d3-sidebar-box .d3-section-text { color: #e5e7eb; font-size: 13px; }
 
+/* "At a glance" key-facts box — light counterpart to the dark Bottom line box */
+.d3-facts-box {
+  background: #f5f0e8; border: 1px solid #c8bfa8;
+  padding: 16px 18px; border-radius: 2px;
+}
+.d3-facts-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px; font-weight: 600; color: #9c1a1a;
+  letter-spacing: .14em; text-transform: uppercase; margin-bottom: 10px;
+}
+.d3-fact { padding: 6px 0; border-top: 1px solid #e2d9c6; }
+.d3-facts-title + .d3-fact { border-top: none; padding-top: 0; }
+.d3-fact-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px; color: #6b7280; letter-spacing: .1em; text-transform: uppercase;
+}
+.d3-fact-value { font-size: 12.5px; color: #1a1a1a; line-height: 1.45; margin-top: 2px; }
+.d3-glance-rule { margin: 24px 0 28px; }
+.d3-glance .d3-section-text + .d3-section-label { margin-top: 28px !important; }
+
+@media (max-width: 640px) {
+  .d3-facts-box { margin-top: 16px; }
+}
+
 /* Standalone sidebar classes (used by the Streamlit app) */
 .d3-sidebar-label {
   font-family: 'JetBrains Mono', monospace;
@@ -685,6 +709,11 @@ body { overflow-x: clip !important; }
 }
 [data-testid="stHorizontalBlock"]:has(.d3-section-label) > [data-testid="stColumn"]:nth-child(3) {
     padding-left: 28px !important;
+}
+/* "At a glance" row has only two columns — the facts box column is last, so no right divider */
+[data-testid="stHorizontalBlock"]:has(.d3-facts-box) > [data-testid="stColumn"]:nth-child(2) {
+    border-right: none;
+    padding-right: 0 !important;
 }
 
 

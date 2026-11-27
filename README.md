@@ -11,7 +11,7 @@ pinned: false
 
 # Company Intelligence Agent
 
-A Streamlit app that turns a company name into a 1-page executive intelligence brief in under 2 minutes. It runs a multi-pass agentic AI pipeline — not a single prompt — that autonomously researches the company across three dimensions and synthesizes the findings into a structured brief covering strategy, narrative, and talent signals.
+A Streamlit app that turns a company name into a 1-page executive intelligence brief in under 2 minutes. It runs a multi-pass agentic AI pipeline — not a single prompt — that autonomously researches the company across four dimensions and synthesizes the findings into a structured brief covering company background, strategy, narrative, and talent signals.
 
 **[Live demo →](https://huggingface.co/spaces/htcooper/company-intel-agent)**
 
@@ -30,12 +30,13 @@ Four sections, every time:
 
 ## How it works
 
-Enter any public company name. The app runs four sequential API calls:
+Enter any public company name. The app runs five sequential API calls:
 
+0. **Company profile** — founding, HQ, leadership, ownership, what they do, main competitors, and what sets them apart
 1. **News & announcements** — searches for strategic moves from the last 12 months
 2. **Hiring signals** — reads job boards to infer company priorities and growth areas
 3. **Content & positioning** — finds blog posts, talks, and press statements to extract public narrative
-4. **Synthesis** — cross-references all three passes into the structured brief
+4. **Synthesis** — cross-references all four passes into the structured brief
 
 Results are cached for 24 hours per company. Cache hits show a banner with the original provider/model and date, plus a `↺ Rerun fresh` link that regenerates with the currently selected provider (overwriting the cache).
 
@@ -46,12 +47,13 @@ User inputs company name
         │
         ├─ Disambiguation (fast model — no web search)
         │
+        ├── Pass 0: Company profile          (research model + web search)
         ├── Pass 1: News & announcements    (research model + web search)
         ├── Pass 2: Hiring signals           (research model + web search)
         └── Pass 3: Content & positioning    (research model + web search)
                 │
                 ▼
-        Synthesis: cross-reference all 3 passes → structured brief
+        Synthesis: cross-reference all 4 passes → structured brief
                 │
                 ▼
         Cache result (24hr TTL) → render + offer markdown download
