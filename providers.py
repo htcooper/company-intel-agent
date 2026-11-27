@@ -48,7 +48,7 @@ PROVIDER_CONFIGS: dict[str, ProviderConfig] = {
         api_key_placeholder="sk-ant-...",
         env_var="ANTHROPIC_API_KEY",
         research_model="claude-sonnet-4-6",
-        fast_model="claude-haiku-4-5-20251001",
+        fast_model="claude-haiku-5-5",
     ),
     "openai": ProviderConfig(
         name="openai",
@@ -85,14 +85,36 @@ class LLMAdapter(Protocol):
 # ── Anthropic adapter ─────────────────────────────────────────────────────────
 
 
+# Models that support the dynamic-filtering web search tool (web_search_20260209).
+# Older models (e.g. Haiku 4.5) need the basic web_search_20250305 variant.
+_DYNAMIC_SEARCH_MODEL_PREFIXES = (
+    "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5",
+    "claude-sonnet-4-6", "claude-sonnet-5", "claude-fable", "claude-mythos",
+)
+
+
+def _anthropic_search_tool(model: str, max_uses: int) -> dict:
+    if model.startswith(_DYNAMIC_SEARCH_MODEL_PREFIXES):
+        return {
+            "type": "web_search_20260209",
+            "name": "web_search",
+            "max_uses": max_uses,
+            "allowed_callers": ["direct"],
+        }
+    return {"type": "web_search_20250305", "name": "web_search", "max_uses": max_uses}
+
+
 class AnthropicAdapter:
-    def __init__(self, api_key: str, model: str, timeout: float = 90.0) -> None:
+    def __init__(
+        self, api_key: str, model: str, timeout: float = 90.0, max_retries: int = 2
+    ) -> None:
         import anthropic
 
         self._anthropic = anthropic
         self._client = anthropic.Anthropic(
             api_key=api_key,
             timeout=anthropic.Timeout(timeout, connect=10.0),
+            max_retries=max_retries,
         )
         self._model = model
 
@@ -103,14 +125,7 @@ class AnthropicAdapter:
         max_tokens: int,
         max_search_uses: int,
     ) -> LLMResponse:
-        tools = [
-            {
-                "type": "web_search_20260209",
-                "name": "web_search",
-                "max_uses": max_search_uses,
-                "allowed_callers": ["direct"],
-            }
-        ]
+        tools = [_anthropic_search_tool(self._model, max_search_uses)]
         try:
             response = self._client.messages.create(
                 model=self._model,
@@ -188,11 +203,15 @@ class AnthropicAdapter:
 
 
 class OpenAIAdapter:
-    def __init__(self, api_key: str, model: str, timeout: float = 90.0) -> None:
+    def __init__(
+        self, api_key: str, model: str, timeout: float = 90.0, max_retries: int = 2
+    ) -> None:
         import openai
 
         self._openai = openai
-        self._client = openai.OpenAI(api_key=api_key, timeout=timeout)
+        self._client = openai.OpenAI(
+            api_key=api_key, timeout=timeout, max_retries=max_retries
+        )
         self._model = model
 
     def call_with_search(
@@ -305,9 +324,12 @@ def make_adapter(
     api_key: str,
     model: str,
     timeout: float = 90.0,
+    max_retries: int = 2,
 ) -> LLMAdapter:
+    """Build a provider adapter. The SDKs retry 429s/5xx with backoff
+    up to max_retries times before raising."""
     if provider == "anthropic":
-        return AnthropicAdapter(api_key, model, timeout)
+        return AnthropicAdapter(api_key, model, timeout, max_retries)
     elif provider == "openai":
-        return OpenAIAdapter(api_key, model, timeout)
+        return OpenAIAdapter(api_key, model, timeout, max_retries)
     raise ValueError(f"Unknown provider: {provider!r}")

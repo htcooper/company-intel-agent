@@ -11,7 +11,7 @@ pinned: false
 
 # Company Intelligence Agent
 
-A Streamlit app that turns a company name into a 1-page executive intelligence brief in about 5–6 minutes. It runs a multi-pass agentic AI pipeline — not a single prompt — that autonomously researches the company across four dimensions and synthesizes the findings into a structured brief covering company background, strategy, narrative, and talent signals.
+A Streamlit app that turns a company name into a 1-page executive intelligence brief in about 2 minutes. It runs a multi-pass agentic AI pipeline — not a single prompt — that autonomously researches the company across four dimensions and synthesizes the findings into a structured brief covering company background, strategy, narrative, and talent signals.
 
 **[Live demo →](https://huggingface.co/spaces/htcooper/company-intel-agent)**
 
@@ -36,13 +36,15 @@ Followed by four sections on recent strategy:
 
 ## How it works
 
-Enter any public company name. The app runs five sequential API calls:
+Enter any public company name. The app runs four independent research passes **in parallel**, then a synthesis call:
 
-0. **Company profile** — founding, HQ, leadership, ownership, what they do, main competitors, and what sets them apart
+0. **Company profile** (fast model) — founding, HQ, leadership, ownership, what they do, main competitors, and what sets them apart
 1. **News & announcements** — searches for strategic moves from the last 12 months
 2. **Hiring signals** — reads job boards to infer company priorities and growth areas
 3. **Content & positioning** — finds blog posts, talks, and press statements to extract public narrative
 4. **Synthesis** — cross-references all four passes into the structured brief
+
+The research passes don't depend on each other, so they run concurrently and the total time is roughly the slowest pass plus synthesis. Progress updates as each pass finishes. If one pass fails (e.g. a timeout), the brief is still built from the other three; if two or more fail, the run stops with an error.
 
 Results are cached for 24 hours per company. Cache hits show a banner with the original provider/model and date, plus a `↺ Rerun fresh` link that regenerates with the currently selected provider (overwriting the cache).
 
@@ -53,10 +55,10 @@ User inputs company name
         │
         ├─ Disambiguation (fast model — no web search)
         │
-        ├── Pass 0: Company profile          (research model + web search)
-        ├── Pass 1: News & announcements    (research model + web search)
-        ├── Pass 2: Hiring signals           (research model + web search)
-        └── Pass 3: Content & positioning    (research model + web search)
+        ├── Pass 0: Company profile        (fast model + web search)      ┐
+        ├── Pass 1: News & announcements   (research model + web search)  │ run in
+        ├── Pass 2: Hiring signals         (research model + web search)  │ parallel
+        └── Pass 3: Content & positioning  (research model + web search)  ┘
                 │
                 ▼
         Synthesis: cross-reference all 4 passes → structured brief
@@ -65,9 +67,15 @@ User inputs company name
         Cache result (24hr TTL) → render + offer markdown download
 ```
 
-Each research pass is a separate API call. With the Anthropic provider, it uses the `web_search_20260209` tool; with OpenAI, the Responses API's `web_search_preview` tool. The model autonomously decides what to search and how to interpret results.
+Each research pass is a separate API call. With the Anthropic provider, it uses the `web_search_20260209` tool (or the basic `web_search_20250305` on models that don't support it, such as Haiku 5.5); with OpenAI, the Responses API's `web_search_preview` tool. The model autonomously decides what to search and how to interpret results.
 
-Every brief — both the UI and the downloaded `.md` — ends with an attribution line showing which provider and model generated it (e.g., `*AI model: Anthropic (claude-sonnet-4-6)*`), so cached and shared briefs are always self-describing.
+**Model routing.** The company-profile pass is a factual lookup, so it runs on the provider's fast model; the news, hiring, and content passes and the synthesis run on the research model.
+
+**Rate limits.** The SDKs retry rate-limited (429) calls with backoff. If a call is still rate-limited:
+- **App default / server keys:** if the server also has the *other* provider's key (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`), that pass or synthesis reruns on the other provider. Without it, the app shows the pre-generated example brief.
+- **Your own key (BYOK):** no cross-provider fallback; the app reports that your account hit its rate limit.
+
+Every brief — both the UI and the downloaded `.md` — ends with an attribution line listing the models that generated it (e.g., `*AI model: Anthropic (claude-sonnet-4-6, claude-haiku-5-5)*`, plus `· OpenAI fallback (gpt-4o)` if a fallback ran), so cached and shared briefs are always self-describing.
 
 ---
 
@@ -77,7 +85,7 @@ Every brief — both the UI and the downloaded `.md` — ends with an attributio
 |---|---|
 | Research model (default) | Claude Sonnet 4.6 (`claude-sonnet-4-6`) |
 | Research model (OpenAI mode) | GPT-4o (`gpt-4o`) |
-| Disambiguation model | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) / GPT-4o-mini |
+| Fast model (disambiguation + company profile) | Claude Haiku 5.5 (`claude-haiku-5-5`) / GPT-4o-mini |
 | Web search (Anthropic) | `web_search_20260209` tool (Messages API) |
 | Web search (OpenAI) | `web_search_preview` tool (Responses API) |
 | Framework | Streamlit |
@@ -105,7 +113,7 @@ streamlit run app.py
 | Variable | Required | Description |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes (App default mode) | Server-side Anthropic key. Powers the "App default" provider option and the free demo runs. On HF Spaces, set as a Space Secret. |
-| `OPENAI_API_KEY` | Optional | Server-side fallback used only when a user selects the OpenAI provider without entering their own key. Not required unless you want OpenAI to work without BYOK. |
+| `OPENAI_API_KEY` | Optional | Server-side key used when a user selects the OpenAI provider without entering their own key, and as the rate-limit fallback for App default runs. |
 
 If neither key is set for the selected provider (and the user hasn't supplied a BYOK key), the app shows a pre-generated example output instead of calling the API.
 
@@ -115,8 +123,8 @@ The "🔑 Use Your Own API Key" popover in the topbar exposes three modes:
 
 | Mode | Key source | Models | Rate limit |
 |---|---|---|---|
-| **App default** (preselected) | Server's `ANTHROPIC_API_KEY` | Claude Sonnet 4.6 + Haiku 4.5 | 3 runs per browser tab |
-| **Anthropic** | Your Anthropic key (BYOK) | Claude Sonnet 4.6 + Haiku 4.5 | Unlimited |
+| **App default** (preselected) | Server's `ANTHROPIC_API_KEY` | Claude Sonnet 4.6 + Haiku 5.5 | 3 runs per browser tab |
+| **Anthropic** | Your Anthropic key (BYOK) | Claude Sonnet 4.6 + Haiku 5.5 | Unlimited |
 | **OpenAI** | Your OpenAI key (BYOK) | GPT-4o + GPT-4o-mini | Unlimited |
 
 The 3-run cap is a soft courtesy limit on the free demo to protect server-side API costs — it resets on page refresh and applies only to the **App default** mode. BYOK users (Anthropic or OpenAI with a key entered) bypass the cap entirely on both the main and disambiguation paths, billed to their own provider account.
@@ -137,7 +145,7 @@ User-supplied company names are treated as untrusted input throughout the pipeli
 An adversarial test suite (`tests/test_adversarial.py`) verifies these defenses against direct injection, system prompt extraction, indirect injection via poisoned web search results, and persona/jailbreak attempts.
 
 ```bash
-# Run security and brief-parsing tests (no API key needed)
+# Run security, parsing, and pipeline tests (no API key needed)
 pytest tests -v -m "not integration"
 
 # Run live API tests
@@ -159,7 +167,8 @@ pytest tests/test_adversarial.py -v -m integration
 ├── .env.example
 ├── tests/
 │   ├── test_adversarial.py       # Prompt injection test suite
-│   └── test_parse_brief.py       # Brief parsing tests
+│   ├── test_parse_brief.py       # Brief parsing tests
+│   └── test_pipeline.py          # Parallel pipeline, model routing, fallback (offline)
 └── cache/                        # Generated at runtime, gitignored
 ```
 

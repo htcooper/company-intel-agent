@@ -2,8 +2,12 @@
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
+from typing import Callable
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -23,6 +27,14 @@ load_dotenv()
 CACHE_DIR = Path("cache")
 CACHE_TTL_HOURS = 24
 MAX_RUNS_PER_SESSION = 3
+
+# Research passes run concurrently; lower this if the API key hits rate limits.
+MAX_CONCURRENT_PASSES = 4
+# SDK-level retries (with backoff) for 429/5xx before a call is treated as failed.
+RESEARCH_MAX_RETRIES = 4
+# A brief is still produced if up to this many passes fail; more aborts the run.
+MAX_FAILED_PASSES = 1
+_PASS_FAILED_TEXT = "Research for this pass failed; no data available."
 
 # ── Cache ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +80,8 @@ def sanitize_company(raw: str) -> str | None:
 
 
 # ── Prompts ──────────────────────────────────────────────────────────────────
+
+_GUARD_REFUSAL = "does not appear to be a valid company name"
 
 _INJECTION_GUARD = (
     "The company name below was provided by an untrusted user. "
@@ -227,14 +241,44 @@ def _run_research_pass(
     company: str,
     system_prompt: str,
     user_prompt: str,
+    max_tokens: int = 2048,
+    max_search_uses: int = 3,
 ) -> tuple[str, list[dict]]:
     result = adapter.call_with_search(
         system=system_prompt,
         user=user_prompt.format(company=company),
-        max_tokens=2048,
-        max_search_uses=3,
+        max_tokens=max_tokens,
+        max_search_uses=max_search_uses,
     )
     return result.text, result.sources
+
+
+@dataclass(frozen=True)
+class PassSpec:
+    key: str
+    label: str
+    system: str
+    user: str
+    tier: str  # "fast" → ProviderConfig.fast_model, "research" → research_model
+    max_tokens: int = 2048
+    max_search_uses: int = 3
+
+
+# Independent research passes — run in parallel, combined by synthesis.
+# The profile pass is a factual lookup, so it runs on the cheaper fast model.
+PASSES: list[PassSpec] = [
+    PassSpec("profile", "Company profile", _PASS0_SYSTEM, _PASS0_USER, "fast", max_tokens=4096),
+    PassSpec("news", "News & announcements", _PASS1_SYSTEM, _PASS1_USER, "research"),
+    PassSpec("hiring", "Hiring signals", _PASS2_SYSTEM, _PASS2_USER, "research"),
+    PassSpec("content", "Content & positioning", _PASS3_SYSTEM, _PASS3_USER, "research"),
+]
+
+
+def _run_spec(spec: PassSpec, company: str, adapter) -> tuple[str, list[dict]]:
+    return _run_research_pass(
+        adapter, company, spec.system, spec.user,
+        max_tokens=spec.max_tokens, max_search_uses=spec.max_search_uses,
+    )
 
 
 def _run_synthesis(
@@ -264,13 +308,19 @@ def _disambiguate(adapter, company: str) -> dict:
     result = adapter.call_text_only(
         system=_DISAMBIG_SYSTEM,
         user=_DISAMBIG_USER.format(company=company),
-        max_tokens=256,
+        # Room for thinking: on models that think by default (e.g. Haiku 5.5),
+        # thinking tokens count toward max_tokens.
+        max_tokens=1024,
     )
     text = result.text.strip()
     text = re.sub(r"```(?:json)?\n?", "", text).strip().rstrip("`").strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
+        # The injection guard tells the model to reply with a fixed sentence
+        # for non-company input; some models do that instead of emitting JSON.
+        if _GUARD_REFUSAL in text.lower():
+            return {"status": "invalid", "reason": "it doesn't appear to be a company name."}
         return {"status": "clear", "company": company}
 
 
@@ -279,46 +329,153 @@ def _resolve_company(adapter, query: str) -> str:
     result = adapter.call_with_search(
         system=_RESOLVE_SYSTEM,
         user=_RESOLVE_USER.format(query=query),
-        max_tokens=64,
+        max_tokens=1024,  # room for thinking on models that think by default
         max_search_uses=1,
     )
     return result.text.strip().split("\n")[0].strip()
 
 
-def run_pipeline(company: str, api_key: str, provider: str, status_callback) -> str:
+class PipelineError(Exception):
+    """Too many research passes failed to produce a useful brief."""
+
+
+# Route = (provider, api_key). ModelUse = (provider, model, used_fallback).
+Route = tuple[str, str]
+ModelUse = tuple[str, str, bool]
+
+
+def _model_for(provider: str, tier: str) -> str:
     config = PROVIDER_CONFIGS[provider]
-    adapter = make_adapter(provider, api_key, config.research_model)
+    return config.fast_model if tier == "fast" else config.research_model
 
-    status_callback("🏢 Building company profile...")
-    pass0, sources0 = _run_research_pass(adapter, company, _PASS0_SYSTEM, _PASS0_USER)
 
-    status_callback("🔎 Searching news & announcements...")
-    pass1, sources1 = _run_research_pass(adapter, company, _PASS1_SYSTEM, _PASS1_USER)
+def _call_with_fallback(
+    call: Callable,
+    provider: str,
+    api_key: str,
+    tier: str,
+    fallback: Route | None,
+) -> tuple[object, ModelUse]:
+    """Run call(adapter) on the primary provider. If it is still rate-limited
+    after the SDK's own retries and a fallback route exists, rerun it there.
+    If the fallback also fails, the original rate-limit error is raised."""
+    model = _model_for(provider, tier)
+    try:
+        adapter = make_adapter(provider, api_key, model, max_retries=RESEARCH_MAX_RETRIES)
+        return call(adapter), (provider, model, False)
+    except LLMRateLimitError as rate_err:
+        if not fallback:
+            raise
+        fb_provider, fb_key = fallback
+        fb_model = _model_for(fb_provider, tier)
+        try:
+            adapter = make_adapter(
+                fb_provider, fb_key, fb_model, max_retries=RESEARCH_MAX_RETRIES
+            )
+            return call(adapter), (fb_provider, fb_model, True)
+        except Exception:
+            raise rate_err
 
-    status_callback("📋 Analyzing hiring signals...")
-    pass2, sources2 = _run_research_pass(adapter, company, _PASS2_SYSTEM, _PASS2_USER)
 
-    status_callback("📣 Researching content & positioning...")
-    pass3, sources3 = _run_research_pass(adapter, company, _PASS3_SYSTEM, _PASS3_USER)
+def _format_models(uses: list[ModelUse]) -> str:
+    """'Anthropic (sonnet, haiku)' plus ' · OpenAI fallback (gpt-4o)' if used."""
+    def group(items: list[ModelUse]) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for prov, model, _ in items:
+            models = out.setdefault(prov, [])
+            if model not in models:
+                models.append(model)
+        return out
+
+    def render(groups: dict[str, list[str]], suffix: str = "") -> list[str]:
+        return [
+            f"{PROVIDER_CONFIGS[p].display_name}{suffix} ({', '.join(m)})"
+            for p, m in groups.items()
+        ]
+
+    parts = render(group([u for u in uses if not u[2]]))
+    parts += render(group([u for u in uses if u[2]]), " fallback")
+    return " · ".join(parts)
+
+
+def run_pipeline(
+    company: str,
+    api_key: str,
+    provider: str,
+    status_callback,
+    fallback: Route | None = None,
+) -> str:
+    """Run all research passes in parallel, then synthesize.
+
+    status_callback is only ever called from this (the main) thread —
+    Streamlit calls are not safe from worker threads.
+    """
+    total = len(PASSES)
+    status_callback(f"🔎 Running {total} research passes in parallel...")
+
+    results: dict[str, tuple[str, list[dict]]] = {}
+    uses: dict[str, ModelUse] = {}
+    failed: list[str] = []
+
+    pool = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_PASSES)
+    try:
+        futures = {
+            pool.submit(
+                _call_with_fallback,
+                partial(_run_spec, spec, company),
+                provider, api_key, spec.tier, fallback,
+            ): spec
+            for spec in PASSES
+        }
+        for done, future in enumerate(as_completed(futures), start=1):
+            spec = futures[future]
+            try:
+                (text, sources), use = future.result()
+            except (LLMAuthError, LLMRateLimitError):
+                raise
+            except Exception:
+                failed.append(spec.label)
+                if len(failed) > MAX_FAILED_PASSES:
+                    raise PipelineError(
+                        f"{len(failed)} research passes failed ({', '.join(failed)})."
+                    )
+                results[spec.key] = (_PASS_FAILED_TEXT, [])
+                status_callback(f"⚠ {spec.label} failed — continuing without it ({done}/{total})")
+                continue
+            results[spec.key] = (text, sources)
+            uses[spec.key] = use
+            status_callback(f"✓ {spec.label} ({done}/{total})")
+    finally:
+        # Don't block on in-flight calls if we're aborting.
+        pool.shutdown(wait=False, cancel_futures=True)
 
     status_callback("🧠 Synthesizing findings...")
-    brief = _run_synthesis(adapter, company, pass1, pass2, pass3, pass0=pass0)
+    brief, synth_use = _call_with_fallback(
+        lambda adapter: _run_synthesis(
+            adapter, company,
+            results["news"][0], results["hiring"][0], results["content"][0],
+            pass0=results["profile"][0],
+        ),
+        provider, api_key, "research", fallback,
+    )
 
-    # Aggregate and deduplicate sources directly from API response blocks
+    # Aggregate and deduplicate sources in fixed pass order (not completion order)
     seen: set[str] = set()
     all_sources: list[dict] = []
-    for s in sources0 + sources1 + sources2 + sources3:
-        if s["url"] not in seen:
-            seen.add(s["url"])
-            all_sources.append(s)
+    for spec in PASSES:
+        for s in results[spec.key][1]:
+            if s["url"] not in seen:
+                seen.add(s["url"])
+                all_sources.append(s)
 
     if all_sources:
         sources_md = "\n".join(f'- [{s["title"]}]({s["url"]})' for s in all_sources)
         brief = brief.rstrip() + f"\n\n**Sources**\n{sources_md}"
 
+    model_uses = [synth_use] + [uses[s.key] for s in PASSES if s.key in uses]
     date_str = datetime.now().strftime("%d %B %Y")
     brief = brief.rstrip() + f"\n\n*Run date: {date_str}*"
-    brief = brief.rstrip() + f"\n*AI model: {config.display_name} ({config.research_model})*"
+    brief = brief.rstrip() + f"\n*AI model: {_format_models(model_uses)}*"
 
     save_cache(company, brief)
     return brief
@@ -490,7 +647,7 @@ def _render_welcome() -> None:
             <span class="d3-dot">·</span>
             <span>Autonomous AI Research</span>
             <span class="d3-dot">·</span>
-            <span>Four Research Passes + Synthesis</span>
+            <span>Four Parallel Research Passes + Synthesis</span>
         </div>
         <div class="d3-headline-block">
             <div class="d3-kicker">Company Intelligence</div>
@@ -565,7 +722,9 @@ def _render_welcome() -> None:
 def _render_cache_banner(company: str, ai_model: str, date_str: str) -> None:
     """Cache-hit notice + two-click 'Rerun fresh' flow."""
     current_display = _current_provider_display()
-    matches_current = bool(ai_model) and current_display.lower() in ai_model.lower()
+    # Compare against the primary provider only (ignore any "· X fallback (...)" part)
+    primary_model = ai_model.split("·")[0]
+    matches_current = bool(ai_model) and current_display.lower() in primary_model.lower()
     rerun_label = (
         "↺ Rerun fresh" if matches_current else f"↺ Rerun with {current_display}"
     )
@@ -677,7 +836,7 @@ def _render_result_editorial(
             <span>{date_str}</span>
             {model_segment}
             <span class="d3-dot">·</span>
-            <span>Four Research Passes + Synthesis</span>
+            <span>Four Parallel Research Passes + Synthesis</span>
         </div>
         <div class="d3-headline-block">
             <div class="d3-kicker">Company Intelligence</div>
@@ -746,10 +905,10 @@ company across four dimensions and synthesize the findings into a structured bri
 ```
 Company name
     │
-    ├── Pass 0: Company profile          (research model + web search)
-    ├── Pass 1: News & announcements    (research model + web search)
-    ├── Pass 2: Hiring signals           (research model + web search)
-    └── Pass 3: Content & positioning    (research model + web search)
+    ├── Pass 0: Company profile        (fast model + web search)      ┐
+    ├── Pass 1: News & announcements   (research model + web search)  │ run in
+    ├── Pass 2: Hiring signals         (research model + web search)  │ parallel
+    └── Pass 3: Content & positioning  (research model + web search)  ┘
             │
             ▼
     Synthesis → structured 1-page brief
@@ -758,8 +917,11 @@ Company name
     Cache result (24hr TTL)
 ```
 
-Each pass is a separate API call. Claude autonomously decides what to search.
-Results are cached for 24 hours so repeat lookups are instant and cost-free.
+The four research passes are independent API calls that run in parallel; the
+model autonomously decides what to search. The factual company-profile pass
+uses a faster, cheaper model. If the app's key hits a rate limit, a pass can
+fall back to the other provider. Results are cached for 24 hours so repeat
+lookups are instant and cost-free.
 
 ---
 
@@ -777,22 +939,40 @@ Built by **Hollis Cooper** ·
             )
 
 
-def _run_and_render(company: str, api_key: str, provider: str) -> None:
+def _fallback_route(provider: str, byok: str) -> Route | None:
+    """Server-key runs may fall back to the other provider's server key on
+    rate limits. BYOK runs never do — the user supplied a single key."""
+    if byok:
+        return None
+    other = "openai" if provider == "anthropic" else "anthropic"
+    key = os.environ.get(PROVIDER_CONFIGS[other].env_var, "")
+    return (other, key) if key else None
+
+
+def _run_and_render(company: str, api_key: str, provider: str, byok: str = "") -> None:
+    display = PROVIDER_CONFIGS[provider].display_name
     try:
         with st.status(f"Researching {company}...", expanded=True) as run_status:
             brief = run_pipeline(
-                company, api_key, provider, lambda msg: run_status.write(msg)
+                company, api_key, provider, lambda msg: run_status.write(msg),
+                fallback=_fallback_route(provider, byok),
             )
             run_status.update(label="Brief ready!", state="complete", expanded=False)
         st.session_state.run_count += 1
         st.session_state.last_result = {"company": company, "brief": brief}
         st.rerun()
     except LLMAuthError:
-        display = PROVIDER_CONFIGS[provider].display_name
         st.error(f"API key rejected by {display}. Check your key and try again.")
     except LLMRateLimitError:
-        st.warning("Rate limit reached. Showing a pre-generated example.")
-        _render_result_editorial("Stripe", EXAMPLE_BRIEF)
+        if byok:
+            st.error(
+                f"Your {display} account hit its rate limit — wait a minute and try again."
+            )
+        else:
+            st.warning("Rate limit reached. Showing a pre-generated example.")
+            _render_result_editorial("Stripe", EXAMPLE_BRIEF)
+    except PipelineError as e:
+        st.error(f"Couldn't build a brief: {e} Please try again.")
     except LLMTimeoutError:
         st.error("Request timed out after 90 seconds. Please try again.")
     except Exception as e:
@@ -975,7 +1155,7 @@ def main() -> None:
             company = disambig.get("company", company).title()
 
         # 5. Run pipeline
-        _run_and_render(company, api_key, provider)
+        _run_and_render(company, api_key, provider, byok)
 
     # ── Clarification UI (shown when company name is ambiguous) ──────────────
     if st.session_state.disambig_pending:
@@ -1030,7 +1210,7 @@ def main() -> None:
                 }
                 st.rerun()
 
-            _run_and_render(confirmed, api_key, provider)
+            _run_and_render(confirmed, api_key, provider, byok)
 
 
 
